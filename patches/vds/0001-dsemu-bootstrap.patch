@@ -1,0 +1,1721 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4439ed9..bdbf433 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,6 +1,11 @@
+ cmake_minimum_required(VERSION 3.12)
+ 
+ project(vds LANGUAGES CXX)
++if(MSVC)
++  add_compile_options(/utf-8)
++endif()
++
++include(CTest)
+ 
+ option(INSTALL_SERVICE "Register vdsd as a system service during install" OFF)
+ option(STOP_SERVICE "Stop vdsd before service install or uninstall" ON)
+@@ -15,6 +20,7 @@ endif()
+ 
+ if(WIN32)
+   find_package(Opus CONFIG REQUIRED)
++  find_package(nlohmann_json CONFIG REQUIRED)
+   set(VDS_OPUS_TARGET Opus::opus)
+ else()
+   find_package(PkgConfig REQUIRED)
+@@ -82,6 +88,29 @@ target_include_directories(vds_config PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+                                              ${CMAKE_CURRENT_SOURCE_DIR}/src)
+ target_link_libraries(vds_config PUBLIC jsonl vds_common)
+ 
++if(BUILD_TESTING)
++  add_executable(vds_config_tests tests/config_tests.cc)
++  target_link_libraries(vds_config_tests PRIVATE vds_config jsonl vds_common)
++  if(WIN32)
++    target_link_libraries(vds_config_tests PRIVATE vds_win32)
++    add_executable(dsemu_hardware_probe tests/hardware_probe.cc)
++    target_link_libraries(dsemu_hardware_probe PRIVATE ole32 uuid winmm)
++    add_executable(dsemu_hid_probe tests/hid_probe.cc)
++    target_include_directories(dsemu_hid_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
++    target_link_libraries(dsemu_hid_probe PRIVATE hid setupapi nlohmann_json::nlohmann_json)
++  endif()
++  add_test(NAME config_port_paths COMMAND vds_config_tests)
++  add_executable(vds_protocol_tests tests/protocol_tests.cc)
++  target_link_libraries(vds_protocol_tests PRIVATE vds_protocol ${VDS_OPUS_TARGET})
++  add_test(NAME protocol_boundaries COMMAND vds_protocol_tests)
++  add_executable(vds_audio_tests tests/audio_tests.cc)
++  target_link_libraries(vds_audio_tests PRIVATE vds_protocol ${VDS_OPUS_TARGET})
++  add_test(NAME audio_channels COMMAND vds_audio_tests)
++  add_executable(dsemu_metrics_tests tests/metrics_tests.cc)
++  target_include_directories(dsemu_metrics_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
++  add_test(NAME connection_metrics COMMAND dsemu_metrics_tests)
++endif()
++
+ add_library(vds_log OBJECT src/vds_log.cc)
+ target_include_directories(vds_log PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+ 
+@@ -106,7 +135,14 @@ if(WIN32)
+   target_include_directories(
+     vds_hidhide PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+                        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+-  target_link_libraries(vds_hidhide PUBLIC vds_log vds_win32)
++  target_link_libraries(vds_hidhide PUBLIC vds_log vds_win32 nlohmann_json::nlohmann_json)
++  if(BUILD_TESTING)
++    add_executable(dsemu_mock_hidhide tests/mock_hidhide.cc)
++    add_executable(vds_hidhide_tests tests/hidhide_tests.cc)
++    target_link_libraries(vds_hidhide_tests PRIVATE vds_hidhide vds_log vds_win32)
++    add_dependencies(vds_hidhide_tests dsemu_mock_hidhide)
++    add_test(NAME hidhide_ownership COMMAND vds_hidhide_tests)
++  endif()
+ 
+   add_library(vds_usbip OBJECT src/platform/win32/vds_usbip.cc)
+   target_include_directories(
+@@ -121,6 +157,7 @@ if(WIN32)
+   target_link_libraries(
+     vdsd
+     PRIVATE vds_protocol
++            nlohmann_json::nlohmann_json
+             jsonl
+             vds_bt
+             vds_common
+@@ -146,6 +183,9 @@ if(WIN32)
+             vds_win32
+             vdsctl_common
+             advapi32)
++  if(BUILD_TESTING)
++    add_test(NAME control_protocol COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/test-control.ps1 -Engine $<TARGET_FILE:vdsd> -Mock $<TARGET_FILE:dsemu_mock_hidhide>)
++  endif()
+ else()
+   add_library(vds_bt OBJECT src/platform/linux/vds_bt.cc)
+   target_link_libraries(vds_bt PUBLIC vds_protocol vds_io PkgConfig::BLUEZ)
+diff --git a/src/dsemu_metrics.hh b/src/dsemu_metrics.hh
+new file mode 100644
+index 0000000..e49d3ec
+--- /dev/null
++++ b/src/dsemu_metrics.hh
+@@ -0,0 +1,48 @@
++// SPDX-License-Identifier: MIT
++#pragma once
++#include <algorithm>
++#include <chrono>
++#include <cstdint>
++#include <deque>
++#include <optional>
++
++namespace dsemu {
++struct BatteryStatus {std::optional<int> percent;bool charging=false;};
++inline BatteryStatus decode_battery_status(std::uint8_t raw) {
++  const unsigned status=raw>>4,level=raw&15;
++  if(status==2)return {100,false};
++  if(status<=1 && level<=10)return {std::min(100,static_cast<int>(level*10+5)),status==1};
++  return {};
++}
++struct MetricsSnapshot {double packets_per_second=0;std::uint64_t gaps_over_10ms=0;double max_gap_ms=0;double observed_seconds=0;};
++class InputMetrics {
++public:
++  using Clock=std::chrono::steady_clock;
++  void add(Clock::time_point now) {
++    if(!started_) {first_=now;started_=true;}
++    const double gap=last_?std::chrono::duration<double,std::milli>(now-*last_).count():0;
++    last_=now;
++    samples_.push_back({now,gap});
++    if(gap>10)++gaps_;
++    while(!maxima_.empty() && maxima_.back().gap<=gap)maxima_.pop_back();
++    maxima_.push_back({now,gap});
++    prune(now);
++  }
++  MetricsSnapshot snapshot(Clock::time_point now) {
++    prune(now);
++    const double seconds=started_?std::clamp(std::chrono::duration<double>(now-first_).count(),0.0,60.0):0;
++    return {seconds>0?samples_.size()/seconds:0,gaps_,maxima_.empty()?0:maxima_.front().gap,seconds};
++  }
++private:
++  struct Sample{Clock::time_point at;double gap;};
++  void prune(Clock::time_point now) {
++    const auto cutoff=now-std::chrono::seconds(60);
++    while(!samples_.empty() && samples_.front().at<=cutoff){if(samples_.front().gap>10)--gaps_;samples_.pop_front();}
++    while(!maxima_.empty() && maxima_.front().at<=cutoff)maxima_.pop_front();
++  }
++  bool started_=false;Clock::time_point first_{};
++  std::optional<Clock::time_point> last_;
++  std::deque<Sample> samples_,maxima_;
++  std::uint64_t gaps_=0;
++};
++}
+diff --git a/src/platform/win32/vds_bt.cc b/src/platform/win32/vds_bt.cc
+index 3d90890..982f72b 100644
+--- a/src/platform/win32/vds_bt.cc
++++ b/src/platform/win32/vds_bt.cc
+@@ -27,6 +27,9 @@
+ #include <windows.h>
+ 
+ #include <bluetoothapis.h>
++#include <winioctl.h>
++#include <bthdef.h>
++#include <bthioctl.h>
+ #include <cfgmgr32.h>
+ #include <hidsdi.h>
+ #include <setupapi.h>
+@@ -1175,6 +1178,42 @@ find_hid_bluetooth_device(const std::string &address) {
+   return std::move(*match);
+ }
+ 
++bool bluetooth_device_connected(const std::string &address) {
++  const auto info=query_bluetooth_device_info(address);
++  return info && info->fConnected;
++}
++
++void disconnect_bluetooth_device(const std::string &address) {
++  const auto parsed=bluetooth_address_to_u64(address);
++  if(!parsed)throw std::runtime_error("Invalid Bluetooth target address");
++  BLUETOOTH_FIND_RADIO_PARAMS parameters{sizeof(parameters)};
++  HANDLE raw_radio=nullptr;
++  const auto find=BluetoothFindFirstRadio(&parameters,&raw_radio);
++  if(!find) {
++    if(!bluetooth_device_connected(address))return;
++    throw std::runtime_error("Bluetooth radio unavailable");
++  }
++  struct FindGuard {HBLUETOOTH_RADIO_FIND value;~FindGuard(){BluetoothFindRadioClose(value);}} guard{find};
++  DWORD failure=ERROR_NOT_CONNECTED;bool requested=false;
++  do {
++    UniqueHandle radio(raw_radio);
++    BLUETOOTH_DEVICE_INFO info{};info.dwSize=sizeof(info);info.Address.ullLong=*parsed;
++    if(BluetoothGetDeviceInfo(radio.get(),&info)!=ERROR_SUCCESS || !info.fConnected)continue;
++    BTH_ADDR target=*parsed;DWORD returned=0;requested=true;
++    if(!DeviceIoControl(radio.get(),IOCTL_BTH_DISCONNECT_DEVICE,&target,sizeof(target),nullptr,0,&returned,nullptr)) {
++      failure=GetLastError();continue;
++    }
++    const auto until=Clock::now()+std::chrono::seconds(5);
++    do {
++      if(!bluetooth_device_connected(address))return;
++      std::this_thread::sleep_for(std::chrono::milliseconds(50));
++    }while(Clock::now()<until);
++    failure=ERROR_TIMEOUT;
++  }while(BluetoothFindNextRadio(find,&raw_radio));
++  if(!bluetooth_device_connected(address))return;
++  throw std::runtime_error(std::string(requested?"Bluetooth disconnect failed":"Connected Bluetooth target not found")+" (Win32 "+std::to_string(failure)+")");
++}
++
+ std::string describe_bluetooth_lookup(const std::string &address) {
+   const bool valid_address = is_bluetooth_address(address);
+   const std::string address_filter =
+diff --git a/src/platform/win32/vds_bt.hh b/src/platform/win32/vds_bt.hh
+index 3fa717f..1a30011 100644
+--- a/src/platform/win32/vds_bt.hh
++++ b/src/platform/win32/vds_bt.hh
+@@ -54,4 +54,8 @@ std::string describe_bluetooth_lookup(const std::string &address);
+ std::unique_ptr<BluetoothTransport>
+ make_hid_bluetooth_transport(const std::string &address);
+ 
++// Only the selected remote ACL link is affected; pairing and radios stay intact.
++void disconnect_bluetooth_device(const std::string &address);
++bool bluetooth_device_connected(const std::string &address);
++
+ } // namespace vds::win
+diff --git a/src/platform/win32/vds_hidhide.cc b/src/platform/win32/vds_hidhide.cc
+index ba16e6b..b4bd5d4 100644
+--- a/src/platform/win32/vds_hidhide.cc
++++ b/src/platform/win32/vds_hidhide.cc
+@@ -12,6 +12,9 @@
+ #include <string_view>
+ #include <thread>
+ #include <vector>
++#include <filesystem>
++#include <fstream>
++#include <nlohmann/json.hpp>
+ 
+ #ifndef NOMINMAX
+ #define NOMINMAX
+@@ -27,6 +30,8 @@ namespace vds::win::hidhide {
+ namespace {
+ 
+ constexpr DWORD kProcessTimeoutMs = 10000;
++std::string recovery_path;
++std::mutex lease_mutex;
+ constexpr std::wstring_view kDefaultCliRelativePath =
+     LR"(Nefarius Software Solutions\HidHide\x64\HidHideCLI.exe)";
+ 
+@@ -282,8 +287,62 @@ bool device_is_hidden(std::string_view instance_path) {
+   return output.find(needle) != std::string::npos;
+ }
+ 
++bool cloak_is_enabled() {
++  const auto state = run_cli({L"--cloak-state"});
++  if (state.find("--cloak-on") != std::string::npos) return true;
++  if (state.find("--cloak-off") != std::string::npos) return false;
++  throw std::runtime_error("HidHide returned an unknown cloak state");
++}
++
++bool daemon_is_registered() {
++  std::string output=run_cli({L"--app-list"});
++  std::string own="--app-reg \""+utf8_from_utf16(executable_path())+"\"";
++  lowercase_ascii(output);lowercase_ascii(own);
++  return output.find(own)!=std::string::npos;
++}
++
++void write_journal(const nlohmann::json& record) {
++  if(recovery_path.empty())throw std::runtime_error("HidHide recovery path is not configured");
++  const std::filesystem::path target(recovery_path),temporary(recovery_path+".tmp");
++  std::filesystem::create_directories(target.parent_path());
++  const auto bytes=record.dump();
++  UniqueHandle file(CreateFileW(temporary.c_str(),GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr));
++  DWORD written=0;
++  if(!file || !WriteFile(file.get(),bytes.data(),static_cast<DWORD>(bytes.size()),&written,nullptr) || written!=bytes.size() || !FlushFileBuffers(file.get()))throw std::runtime_error("Cannot persist HidHide recovery intent");
++  file.reset();
++  if(!MoveFileExW(temporary.c_str(),target.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Cannot commit HidHide recovery intent");
++}
++
++bool contains_other_hidden_device(std::string_view instance_path) {
++  std::string output = run_cli({L"--dev-list"});
++  std::string own = "--dev-hide \"" + std::string(instance_path) + "\"";
++  lowercase_ascii(output); lowercase_ascii(own);
++  const auto position = output.find(own);
++  if (position != std::string::npos) output.erase(position, own.size());
++  return output.find("--dev-hide") != std::string::npos;
++}
++
+ } // namespace
+ 
++void configure_recovery(std::string path) {recovery_path=std::move(path);}
++
++void recover_changes() {
++  if(recovery_path.empty() || !std::filesystem::exists(recovery_path))return;
++  if(std::filesystem::file_size(recovery_path)>16384)throw std::runtime_error("Invalid HidHide recovery journal size");
++  std::ifstream file(recovery_path);auto record=nlohmann::json::parse(file);file.close();
++  std::string owner=record.at("daemon").get<std::string>(),expected=utf8_from_utf16(executable_path());
++  lowercase_ascii(owner);lowercase_ascii(expected);
++  const auto device=record.at("device").get<std::string>();
++  if(record.at("schema")!=1 || owner!=expected || device.rfind("HID\\",0)!=0)throw std::runtime_error("Invalid HidHide recovery journal scope");
++  if(record.at("hideAdded").get<bool>())run_cli({L"--dev-unhide",utf16_from_utf8(device)});
++  if(record.at("cloakEnabled").get<bool>()) {
++    if(contains_other_hidden_device(device))throw std::runtime_error("HidHide recovery deferred: another device configuration changed");
++    run_cli({L"--cloak-off"});
++  }
++  if(record.at("appAdded").get<bool>())run_cli({L"--app-unreg",executable_path()});
++  std::filesystem::remove(recovery_path);
++}
++
+ bool provider_available() {
+   const std::wstring path = resolve_cli_path();
+   return !path.empty() && regular_file_exists(path);
+@@ -308,27 +367,33 @@ void register_daemon() {
+ }
+ 
+ DeviceGuard::DeviceGuard(std::string instance_path, Logger &logger)
+-    : instance_path_(std::move(instance_path)), logger_(logger) {
++    : instance_path_(std::move(instance_path)), logger_(logger),lease_(lease_mutex,std::try_to_lock) {
++  if(!lease_.owns_lock())throw std::runtime_error("DSEmu v1 supports one controller at a time");
+   if (instance_path_.empty()) {
+     throw std::runtime_error(
+         "Windows HID device has no instance path for HidHide");
+   }
+ 
+-  register_daemon();
+-  if (!device_is_hidden(instance_path_)) {
+-    run_cli({L"--dev-hide", utf16_from_utf8(instance_path_)});
+-    hide_added_ = true;
++  if(!recovery_path.empty() && std::filesystem::exists(recovery_path))recover_changes();
++  if (run_cli({L"--inv-state"}).find("--inv-off") == std::string::npos) {
++    throw std::runtime_error("HidHide inverse mode is incompatible; configuration was not changed");
+   }
++  const bool was_enabled = cloak_is_enabled();
++  if (!was_enabled && contains_other_hidden_device(instance_path_)) {
++    throw std::runtime_error("Enabling HidHide would affect other configured devices; configuration was not changed");
++  }
++  hide_added_=!device_is_hidden(instance_path_);
++  cloak_enabled_=!was_enabled;
++  write_journal({{"schema",1},{"device",instance_path_},{"daemon",utf8_from_utf16(executable_path())},{"hideAdded",hide_added_},{"cloakEnabled",cloak_enabled_},{"appAdded",!daemon_is_registered()}});
+   try {
+-    run_cli({L"--cloak-on"});
+-  } catch (...) {
+-    if (hide_added_) {
+-      try {
+-        run_cli({L"--dev-unhide", utf16_from_utf8(instance_path_)});
+-      } catch (...) {
+-      }
+-      hide_added_ = false;
++    register_daemon();
++    if(hide_added_)run_cli({L"--dev-hide",utf16_from_utf8(instance_path_)});
++    if (!was_enabled) {
++      run_cli({L"--cloak-on"});
++      cloak_enabled_ = true;
+     }
++  } catch (...) {
++    try{recover_changes();}catch(...){}
+     throw;
+   }
+ 
+@@ -342,12 +407,8 @@ DeviceGuard::DeviceGuard(std::string instance_path, Logger &logger)
+ }
+ 
+ DeviceGuard::~DeviceGuard() {
+-  if (!hide_added_) {
+-    return;
+-  }
+-
+   try {
+-    run_cli({L"--dev-unhide", utf16_from_utf8(instance_path_)});
++    recover_changes();
+     try {
+       logger_.log(LogScope::Bluetooth, LogLevel::Info,
+                   "HidHide revealed Bluetooth HID device instance=" +
+diff --git a/src/platform/win32/vds_hidhide.hh b/src/platform/win32/vds_hidhide.hh
+index 2acbd45..0a4bac4 100644
+--- a/src/platform/win32/vds_hidhide.hh
++++ b/src/platform/win32/vds_hidhide.hh
+@@ -4,6 +4,7 @@
+ 
+ #include <memory>
+ #include <string>
++#include <mutex>
+ 
+ namespace vds {
+ class Logger;
+@@ -14,6 +15,8 @@ namespace vds::win::hidhide {
+ bool provider_available();
+ std::string provider_path();
+ void register_daemon();
++void configure_recovery(std::string path);
++void recover_changes();
+ 
+ class DeviceGuard {
+ public:
+@@ -27,6 +30,8 @@ private:
+   std::string instance_path_;
+   Logger &logger_;
+   bool hide_added_ = false;
++  bool cloak_enabled_ = false;
++  std::unique_lock<std::mutex> lease_;
+ };
+ 
+ std::unique_ptr<DeviceGuard> hide_device(std::string instance_path,
+diff --git a/src/platform/win32/vds_identity.hh b/src/platform/win32/vds_identity.hh
+new file mode 100644
+index 0000000..5d24552
+--- /dev/null
++++ b/src/platform/win32/vds_identity.hh
+@@ -0,0 +1,20 @@
++// SPDX-License-Identifier: MIT
++#pragma once
++#include <cstdint>
++#include <span>
++#include <stdexcept>
++#include <string>
++#include <vector>
++
++namespace vds::win::usbip {
++inline std::vector<std::uint8_t> device_descriptor_with_serial(std::span<const std::uint8_t> source) {
++  if (source.size()!=18 || source[0]!=18 || source[1]!=1)
++    throw std::invalid_argument("Invalid USB device descriptor");
++  std::vector<std::uint8_t> result(source.begin(),source.end());
++  result[16]=3; // Dedicated string descriptor; no physical MAC/serial exposed.
++  return result;
++}
++inline std::string stable_virtual_serial(unsigned port) {
++  return "DSEmu-DualSense-Port-"+std::to_string(port);
++}
++}
+diff --git a/src/platform/win32/vds_usbip.cc b/src/platform/win32/vds_usbip.cc
+index a50fe74..3a10da5 100644
+--- a/src/platform/win32/vds_usbip.cc
++++ b/src/platform/win32/vds_usbip.cc
+@@ -42,6 +42,7 @@
+ #include "vds_io.hh"
+ #include "vds_log.hh"
+ #include "vds_win32.hh"
++#include "vds_identity.hh"
+ 
+ namespace vds::win::usbip {
+ 
+@@ -1412,9 +1413,11 @@ bool VirtualPort::Impl::handle_cmd_submit(
+       const std::uint8_t desc_index = static_cast<std::uint8_t>(wValue & 0xff);
+       const std::uint8_t *src = nullptr;
+       std::size_t len = 0;
++      std::vector<std::uint8_t> stable_device_descriptor;
+       if (desc_type == 0x01) { // DEVICE
+-        src = desc.device;
+-        len = desc.device_len;
++        stable_device_descriptor = device_descriptor_with_serial({desc.device,desc.device_len});
++        src = stable_device_descriptor.data();
++        len = stable_device_descriptor.size();
+       } else if (desc_type == 0x02) { // CONFIGURATION
+         src = desc.config;
+         len = desc.config_len;
+@@ -1426,8 +1429,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
+         len = desc.hid_report_len;
+       } else if (desc_type == 0x03) { // STRING
+         // Index 0 is the language-ID list; index 1 is iManufacturer,
+-        // index 2 is iProduct (per the device descriptor byte layout in
+-        // ds5_usb.h -- iManufacturer=1, iProduct=2, iSerialNumber=0/none).
++        // index 2 is iProduct, index 3 is our stable virtual serial.
+         std::vector<std::uint8_t> built;
+         if (desc_index == 0) {
+           built = build_langid_descriptor();
+@@ -1437,6 +1439,8 @@ bool VirtualPort::Impl::handle_cmd_submit(
+           built = build_string_descriptor(profile == VDS_PROFILE_DSE
+                                               ? VDS_DSE_USB_PRODUCT_STRING
+                                               : VDS_DS5_USB_PRODUCT_STRING);
++        } else if (desc_index == 3) {
++          built = build_string_descriptor(stable_virtual_serial(port_index));
+         }
+         if (!built.empty()) {
+           const std::size_t copy_len =
+diff --git a/src/platform/win32/vdsctl.cc b/src/platform/win32/vdsctl.cc
+index a951df6..38cae99 100644
+--- a/src/platform/win32/vdsctl.cc
++++ b/src/platform/win32/vdsctl.cc
+@@ -17,7 +17,7 @@
+ 
+ namespace {
+ 
+-constexpr const char *kDefaultControlPipe = R"(\\.\pipe\vdsd)";
++constexpr const char *kDefaultControlPipe = R"(\\.\pipe\DSEmu.Control.v1)";
+ 
+ using vds::win::win32_error_message;
+ 
+diff --git a/src/platform/win32/vdsd.cc b/src/platform/win32/vdsd.cc
+index 34839ba..d99ed09 100644
+--- a/src/platform/win32/vdsd.cc
++++ b/src/platform/win32/vdsd.cc
+@@ -26,8 +26,16 @@
+ #include <thread>
+ #include <utility>
+ #include <vector>
++#include <filesystem>
++#include <fstream>
++#include <future>
++#include <sstream>
++#include <nlohmann/json.hpp>
+ 
+ #include <windows.h>
++#include <sddl.h>
++#include <tlhelp32.h>
++#include <setupapi.h>
+ 
+ #include <mmsystem.h>
+ 
+@@ -47,6 +55,7 @@
+ #include "vds_usbip.hh"
+ #include "vds_win32.hh"
+ #include "vdsd_common.hh"
++#include "dsemu_metrics.hh"
+ 
+ namespace {
+ 
+@@ -55,7 +64,7 @@ using vds::duration_us;
+ using vds::hex_bytes;
+ using vds::hex_u8;
+ 
+-constexpr const char *kDefaultControlPipe = R"(\\.\pipe\vdsd)";
++constexpr const char *kDefaultControlPipe = R"(\\.\pipe\DSEmu.Control.v1)";
+ constexpr const char *kVirtualPortProviderUnavailableReason =
+     "virtual port provider unavailable";
+ constexpr const char *kWindowsVirtualPortProviderUnavailable =
+@@ -88,7 +97,7 @@ constexpr auto kAudioWriteSlowWarn = std::chrono::milliseconds(5);
+ constexpr auto kAudioSendGapWarn = std::chrono::milliseconds(15);
+ constexpr auto kAudioSummaryInterval = std::chrono::seconds(1);
+ constexpr UINT kWindowsTimerResolutionMs = 1;
+-constexpr const char *kServiceName = "vdsd";
++constexpr const char *kServiceName = "DSEmuBridge";
+ constexpr std::uint8_t kTestCommandReportId = 0x80;
+ constexpr std::uint8_t kTestCommandResultReportId = 0x81;
+ constexpr std::uint8_t kTestCommandCompleteStatus = 0x02;
+@@ -107,6 +116,16 @@ constexpr std::uint32_t kSpeakerWaveoutPeriodFrames =
+ constexpr double kSpeakerWaveoutTwoPi = 6.28318530717958647692;
+ constexpr std::int16_t kSpeakerWaveoutAmplitude = 12000;
+ std::atomic_bool g_stop_requested = false;
++int g_process_argc=0;
++char** g_process_argv=nullptr;
++struct LiveTelemetry {
++  std::mutex mutex;
++  dsemu::InputMetrics metrics;
++  std::optional<int> battery;
++  bool charging=false,muted=false,headphones=false;
++  Clock::time_point last_input{},last_audio{},last_mic{};
++  void clear() {std::lock_guard lock(mutex);metrics={};battery.reset();charging=muted=headphones=false;last_input=last_audio=last_mic={};}
++} g_telemetry;
+ HANDLE g_stop_event = nullptr;
+ SERVICE_STATUS_HANDLE g_service_status_handle = nullptr;
+ SERVICE_STATUS g_service_status{};
+@@ -138,8 +157,33 @@ struct Options {
+   std::string db_path;
+   std::string log_path;
+   std::string pipe = kDefaultControlPipe;
++  std::string owner_sid;
++  bool repair_only=false;
+ };
+ 
++std::string exclusive_owner_reason() {
++  UniqueHandle processes(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0));
++  PROCESSENTRY32W entry{sizeof(entry)};
++  if(processes && Process32FirstW(processes.get(),&entry))do {
++    if(_wcsicmp(entry.szExeFile,L"DSX.exe")==0)return "DSX";
++  }while(Process32NextW(processes.get(),&entry));
++  auto devices=SetupDiGetClassDevsW(nullptr,L"USB",nullptr,DIGCF_ALLCLASSES|DIGCF_PRESENT);
++  if(devices!=INVALID_HANDLE_VALUE) {
++    SP_DEVINFO_DATA data{sizeof(data)};
++    for(DWORD index=0;SetupDiEnumDeviceInfo(devices,index,&data);++index) {
++      wchar_t instance[1024]{};
++      if(!SetupDiGetDeviceInstanceIdW(devices,&data,instance,1024,nullptr))continue;
++      std::wstring path(instance);std::transform(path.begin(),path.end(),path.begin(),towupper);
++      const auto prefix=std::wstring(L"USB\\VID_054C&PID_0CE6\\");
++      if(path.rfind(prefix,0)==0 && path.find(L"\\DSEMU-DUALSENSE-PORT-")==std::wstring::npos) {
++        SetupDiDestroyDeviceInfoList(devices);return "USB";
++      }
++    }
++    SetupDiDestroyDeviceInfoList(devices);
++  }
++  return {};
++}
++
+ class TimerResolutionGuard {
+ public:
+   explicit TimerResolutionGuard(UINT period_ms) : period_ms_(period_ms) {
+@@ -428,6 +472,10 @@ Options parse_platform_args(int argc, char **argv) {
+       }
+     } else if (arg == "--pipe") {
+       options.pipe = next_value(i, arg);
++    } else if (arg == "--owner-sid") {
++      options.owner_sid = next_value(i, arg);
++    } else if (arg == "--repair-only") {
++      options.repair_only=true;
+     } else {
+       throw std::runtime_error("unknown option: " + std::string(arg));
+     }
+@@ -1033,6 +1081,7 @@ void handle_virtual_frame(HANDLE virtual_device, BluetoothTransport &bluetooth,
+   if (frame.header.type != VDS_FRAME_USB_AUDIO_OUT) {
+     return;
+   }
++  {std::lock_guard lock(g_telemetry.mutex);g_telemetry.last_audio=Clock::now();}
+ 
+   const auto audio_start = Clock::now();
+   const auto peaks = pcm_channel_peaks(frame.payload);
+@@ -1265,6 +1314,7 @@ void handle_bluetooth_frame(HANDLE virtual_device,
+         return;
+       }
+       if (pcm) {
++        {std::lock_guard lock(g_telemetry.mutex);g_telemetry.last_mic=Clock::now();}
+         for (std::size_t offset = 0; offset + 3 < pcm->size();
+              offset += 2 * sizeof(std::int16_t)) {
+           (*pcm)[offset + 0] = (*pcm)[offset + 2];
+@@ -1307,6 +1357,13 @@ void handle_bluetooth_frame(HANDLE virtual_device,
+ 
+     const auto report = bt_input_to_usb_input(frame.payload);
+     if (report) {
++      {
++        std::lock_guard lock(g_telemetry.mutex);
++        g_telemetry.last_input=Clock::now();g_telemetry.metrics.add(g_telemetry.last_input);
++        const auto battery=dsemu::decode_battery_status((*report)[53]);
++        g_telemetry.battery=battery.percent;g_telemetry.charging=battery.charging;
++        g_telemetry.headphones=((*report)[54]&1)!=0;
++      }
+       vds::win::write_handle_frame(virtual_device, VDS_FRAME_USB_HID_IN,
+                                    *report, "virtual",
+                                    handle_io_cancellation());
+@@ -1357,6 +1414,7 @@ void handle_bluetooth_frame(HANDLE virtual_device,
+         }
+         state.mute_button_down = mute_button_down;
+         mic_muted = state.mic_muted;
++        {std::lock_guard lock(g_telemetry.mutex);g_telemetry.muted=mic_muted;}
+         send_mic_state = mic_mute_changed ||
+                          (headset_mic_changed && state.audio_in_stream_active);
+         if (send_mic_state) {
+@@ -2064,6 +2122,7 @@ void run_bridge_session(const std::string &device_address,
+       vds::win::usbip::open_virtual_port(profile, selected_config->ports[0],
+                                          logger);
+   BridgeState state;
++  g_telemetry.clear();
+   std::mutex bluetooth_mutex;
+   UniqueHandle virtual_device_handle = open_device(virtual_port->pipe_path());
+   std::atomic_bool bridge_restart_requested = false;
+@@ -2076,6 +2135,21 @@ void run_bridge_session(const std::string &device_address,
+         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+       }
+       if (g_stop_requested.load() || session_stop_requested->load()) {
++        // Best effort before transport cancellation: release both trigger
++        // effects and rumble. Never replay a previous session's game effect.
++        try {
++          vds_set_state_data released{};
++          released.allow_right_trigger_ffb=released.allow_left_trigger_ffb=released.allow_led_color=1;
++          released.enable_rumble_emulation=1;
++          released.right_trigger_ffb[0]=released.left_trigger_ffb[0]=5;
++          std::array<std::uint8_t,48> usb{};usb[0]=2;
++          std::memcpy(usb.data()+1,&released,sizeof(released));
++          vds::DsOutputState output;output.apply_usb_output_report(usb);
++          const auto report=output.build_bt_state_report();
++          std::lock_guard lock(bluetooth_mutex);
++          bluetooth->try_write_interrupt_packet(hidp_output_packet(report));
++          Sleep(30);
++        }catch(...){}
+         request_bridge_restart(virtual_device_handle.get(), bluetooth.get(),
+                                bridge_restart_requested);
+       }
+@@ -2172,7 +2246,7 @@ struct BridgeWorker {
+ 
+ class ControlPipeServer {
+ public:
+-  ControlPipeServer(std::string pipe_name, vds::Logger &logger)
++  ControlPipeServer(std::string pipe_name, std::string owner_sid, vds::Logger &logger)
+       : logger_(logger), pipe_name_(std::move(pipe_name)),
+         stop_event_(CreateEventA(nullptr, TRUE, FALSE, nullptr)),
+         command_event_(CreateEventA(nullptr, TRUE, FALSE, nullptr)) {
+@@ -2180,6 +2254,23 @@ public:
+       throw std::runtime_error("failed to create control pipe event: " +
+                                win32_error_message(GetLastError()));
+     }
++    if(owner_sid.empty()) {
++      HANDLE raw_token=nullptr;
++      if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&raw_token)) throw std::runtime_error("Cannot query control pipe owner");
++      UniqueHandle token(raw_token);DWORD size=0;GetTokenInformation(token.get(),TokenUser,nullptr,0,&size);
++      std::vector<unsigned char> buffer(size);
++      if(!GetTokenInformation(token.get(),TokenUser,buffer.data(),size,&size)) throw std::runtime_error("Cannot read control pipe owner");
++      LPSTR sid=nullptr;
++      if(!ConvertSidToStringSidA(reinterpret_cast<TOKEN_USER*>(buffer.data())->User.Sid,&sid)) throw std::runtime_error("Cannot encode owner SID");
++      owner_sid=sid;LocalFree(sid);
++    }
++    PSID sid=nullptr;
++    if(!ConvertStringSidToSidA(owner_sid.c_str(),&sid))throw std::runtime_error("Invalid owner SID");
++    LocalFree(sid);
++    const auto sddl="D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;"+owner_sid+")";
++    PSECURITY_DESCRIPTOR descriptor=nullptr;
++    if(!ConvertStringSecurityDescriptorToSecurityDescriptorA(sddl.c_str(),SDDL_REVISION_1,&descriptor,nullptr))throw std::runtime_error("Cannot secure control pipe");
++    security_.reset(descriptor);
+     thread_ = std::thread([this] { thread_main(); });
+   }
+ 
+@@ -2284,10 +2375,11 @@ private:
+ 
+   void thread_main() {
+     while (!stop_requested_) {
++      SECURITY_ATTRIBUTES attributes{sizeof(attributes),security_.get(),FALSE};
+       UniqueHandle pipe(CreateNamedPipeA(
+-          pipe_name_.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+-          PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096,
+-          0, nullptr));
++          pipe_name_.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
++          PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 65536, 65536,
++          0, &attributes));
+       if (!pipe) {
+         logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
+                     "failed to create control pipe " + pipe_name_ + ": " +
+@@ -2310,7 +2402,7 @@ private:
+                         DWORD &bytes_transferred, std::string_view label) {
+     HANDLE wait_handles[2] = {overlapped.hEvent, stop_event_.get()};
+     const DWORD wait_result =
+-        WaitForMultipleObjects(2, wait_handles, FALSE, INFINITE);
++        WaitForMultipleObjects(2, wait_handles, FALSE, label=="control pipe connect"?INFINITE:5000);
+     if (wait_result == WAIT_OBJECT_0 + 1) {
+       CancelIoEx(pipe, &overlapped);
+       (void)GetOverlappedResult(pipe, &overlapped, &bytes_transferred, TRUE);
+@@ -2380,32 +2472,26 @@ private:
+       return std::nullopt;
+     }
+ 
+-    std::array<char, 512> buffer{};
+-    DWORD got = 0;
+-    OVERLAPPED overlapped{};
+-    overlapped.hEvent = event.get();
+-    const BOOL started =
+-        ReadFile(pipe, buffer.data(), static_cast<DWORD>(buffer.size() - 1),
+-                 &got, &overlapped);
+-    if (!started) {
+-      const DWORD error = GetLastError();
+-      if (error != ERROR_IO_PENDING) {
+-        if (!stop_requested_ && error != ERROR_NO_DATA &&
+-            error != ERROR_BROKEN_PIPE) {
+-          logger_.log(vds::LogScope::Control, vds::LogLevel::Warn,
+-                      "control pipe read failed: " +
+-                          win32_error_message(error));
+-        }
+-        return std::nullopt;
+-      }
+-      if (!wait_for_pipe_io(pipe, overlapped, got, "control pipe read")) {
+-        return std::nullopt;
+-      }
+-    }
+-    if (got == 0) {
+-      return std::nullopt;
++    std::string line;
++    const auto deadline=GetTickCount64()+5000;
++    while(line.size()<65536 && GetTickCount64()<deadline) {
++      std::array<char,4096> buffer{};DWORD got=0;
++      OVERLAPPED overlapped{};overlapped.hEvent=event.get();ResetEvent(event.get());
++      BOOL started=ReadFile(pipe,buffer.data(),static_cast<DWORD>(buffer.size()),&got,&overlapped);
++      DWORD error=started?ERROR_SUCCESS:GetLastError();
++      if(!started && error==ERROR_IO_PENDING) {
++        HANDLE handles[]{event.get(),stop_event_.get()};
++        const auto now=GetTickCount64();
++        auto wait=WaitForMultipleObjects(2,handles,FALSE,now>=deadline?0:static_cast<DWORD>(deadline-now));
++        if(wait!=WAIT_OBJECT_0) {CancelIoEx(pipe,&overlapped);GetOverlappedResult(pipe,&overlapped,&got,TRUE);return std::nullopt;}
++        started=GetOverlappedResult(pipe,&overlapped,&got,FALSE);error=started?ERROR_SUCCESS:GetLastError();
++      }
++      if((!started && error!=ERROR_MORE_DATA) || !got)return std::nullopt;
++      line.append(buffer.data(),got);
++      if(line.size()>65536)return std::nullopt;
++      if(line.find('\n')!=std::string::npos)return line;
+     }
+-    return std::string(buffer.data(), static_cast<std::size_t>(got));
++    return std::nullopt;
+   }
+ 
+   bool write_reply(HANDLE pipe, const std::string &reply) {
+@@ -2447,11 +2533,26 @@ private:
+     }
+ 
+     const std::string reply = queue_command(*command);
+-    (void)write_reply(pipe, reply);
++    if(write_reply(pipe, reply)) {
++      // DisconnectNamedPipe discards unread output. Drain it with a bounded
++      // synchronous flush so a slow client cannot hold the service forever.
++      UniqueHandle finished(CreateEventA(nullptr,TRUE,FALSE,nullptr));
++      HANDLE raw_thread=nullptr;
++      if(finished && DuplicateHandle(GetCurrentProcess(),GetCurrentThread(),GetCurrentProcess(),&raw_thread,0,FALSE,DUPLICATE_SAME_ACCESS)) {
++        UniqueHandle current_thread(raw_thread);
++        std::thread watchdog([&] {
++          HANDLE handles[]{finished.get(),stop_event_.get()};
++          if(WaitForMultipleObjects(2,handles,FALSE,5000)!=WAIT_OBJECT_0)CancelSynchronousIo(current_thread.get());
++        });
++        FlushFileBuffers(pipe);SetEvent(finished.get());watchdog.join();
++      }
++    }
+   }
+ 
+   vds::Logger &logger_;
+   std::string pipe_name_;
++  struct LocalDeleter {void operator()(void* value)const {if(value)LocalFree(value);}};
++  std::unique_ptr<void,LocalDeleter> security_;
+   UniqueHandle stop_event_;
+   UniqueHandle command_event_;
+   std::thread thread_;
+@@ -2550,7 +2651,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+   std::vector<std::string> discovery_warned_states;
+   std::vector<std::string> no_port_warned_addresses;
+   std::vector<std::string> port_binding_warned_states;
+-  ControlPipeServer control_pipe(options.pipe, logger);
++  ControlPipeServer control_pipe(options.pipe, options.owner_sid, logger);
+   UniqueHandle retry_timer(CreateWaitableTimerExA(
+       nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+       TIMER_MODIFY_STATE | SYNCHRONIZE));
+@@ -2565,8 +2666,18 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+   std::atomic_uint32_t trace_flags = 0;
+   bool reload_requested = false;
+   bool scan_requested = true;
++  auto next_periodic_scan = Clock::now();
+   bool config_load_logged = false;
+   bool virtual_port_provider_warned = false;
++  const auto paused_path=options.db_path+".paused";
++  bool bridge_enabled=!std::filesystem::exists(paused_path);
++  std::string last_error;
++  std::string blocked_reason;
++  std::optional<std::string> pending_disconnect;
++  std::future<std::string> disconnect_task;
++  bool bluetooth_disconnected=false;
++  std::string disconnected_address;
++  bool disconnect_failed=false;
+   logger.log(vds::LogScope::Daemon, vds::LogLevel::Info,
+              "Windows bridge supervisor started pipe=" + options.pipe);
+ 
+@@ -2603,6 +2714,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+           (*worker)->thread.join();
+         }
+         if (!(*worker)->last_error.empty()) {
++          last_error=(*worker)->last_error;
+           vds::record_vdsd_worker_failure(
+               worker_failure_backoffs, (*worker)->address,
+               Clock::now() + kBridgeWorkerFailureRetryDelay);
+@@ -2614,9 +2726,29 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+       }
+     }
+     if (worker_removed) {
++      if(workers.empty())g_telemetry.clear();
+       scan_requested = true;
+     }
+ 
++    if(disconnect_task.valid() && disconnect_task.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
++      last_error=disconnect_task.get();disconnect_failed=!last_error.empty();
++      bluetooth_disconnected=!disconnect_failed;
++      logger.log(vds::LogScope::Daemon,disconnect_failed?vds::LogLevel::Error:vds::LogLevel::Info,
++                 disconnect_failed?last_error:"Selected controller Bluetooth connection disconnected");
++      scan_requested=true;
++    }
++    if(pending_disconnect && workers.empty() && !disconnect_task.valid()) {
++      const auto target=*pending_disconnect;pending_disconnect.reset();disconnected_address=target;
++      if(std::filesystem::exists(options.db_path+".hidhide-recovery.json")) {
++        last_error="HidHide recovery is pending; Bluetooth disconnect cancelled";disconnect_failed=true;
++      }else{
++        disconnect_task=std::async(std::launch::async,[target]{
++          try{vds::win::disconnect_bluetooth_device(target);return std::string{};}
++          catch(const std::exception& error){return std::string(error.what());}
++        });
++      }
++    }
++
+     if (reload_requested) {
+       scan_requested = true;
+     }
+@@ -2628,10 +2760,27 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+       scan_requested = true;
+     }
+ 
++    if (Clock::now() >= next_periodic_scan) scan_requested = true;
+     if (scan_requested) {
+       scan_requested = false;
++      // Keep an absolute scan deadline. Frequent getState requests must not
++      // postpone discovery/conflict checks by rearming now + retry delay.
++      next_periodic_scan = Clock::now() + kBridgeOpenRetryDelay;
+       try {
+-        const vds::ConfigDb db = load_config_db_for_attempt(options, logger);
++        if(bluetooth_disconnected && vds::win::bluetooth_device_connected(disconnected_address))bluetooth_disconnected=false;
++        blocked_reason=bridge_enabled?exclusive_owner_reason():std::string{};
++        vds::ConfigDb db = load_config_db_for_attempt(options, logger);
++        if(bridge_enabled && db.controllers.empty()) {
++          auto targets=list_windows_controller_targets();
++          targets.erase(std::remove_if(targets.begin(),targets.end(),[](const auto& t){return t.profile!=vds::ControllerProfile::Ds5;}),targets.end());
++          std::vector<vds::ControllerTarget> online;
++          for(const auto& target:targets)if(target.online)online.push_back(target);
++          if(online.size()==1 || targets.size()==1) {
++            const auto target=online.size()==1?online.front():targets.front();
++            db=vds::update_config_db(options.db_path,[&](auto& config){vds::upsert_controller_config(config,{target.address,vds::ControllerProfile::Ds5,{0}});});
++            last_error.clear();
++          }else if(online.size()>1)last_error="Обнаружено несколько DualSense. Оставьте подключённым один контроллер.";
++        }
+         if (!config_load_logged || reload_requested) {
+           logger.log(vds::LogScope::Daemon, vds::LogLevel::Info,
+                      "loaded controller config count=" +
+@@ -2664,13 +2813,13 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+         }
+ 
+         const std::vector<HidBluetoothDevice> hid_devices =
+-            list_hid_bluetooth_devices();
++            bridge_enabled?list_hid_bluetooth_devices():std::vector<HidBluetoothDevice>{};
+ 
+         for (const auto &worker : workers) {
+           const bool stale = vds::vdsd_worker_config_is_stale(
+               db, worker->address, worker->profile, worker->port,
+               virtual_port_is_enabled(worker->port));
+-          if (stale && !worker->stop_requested.exchange(true)) {
++          if ((stale || !bridge_enabled || !blocked_reason.empty()) && !worker->stop_requested.exchange(true)) {
+             logger.log(
+                 vds::LogScope::Daemon, vds::LogLevel::Info,
+                 "Windows bridge worker retiring address=" + worker->address +
+@@ -2688,6 +2837,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+         }
+ 
+         for (const auto &config : db.controllers) {
++          if(!bridge_enabled || !blocked_reason.empty())continue;
+           if (!vds::consume_vdsd_worker_retry(worker_failure_backoffs,
+                                               config.address, Clock::now())) {
+             continue;
+@@ -2814,7 +2964,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+     }
+ 
+     const auto now = Clock::now();
+-    std::optional<Clock::time_point> retry_after = now + kBridgeOpenRetryDelay;
++    std::optional<Clock::time_point> retry_after = next_periodic_scan;
+     if (!worker_failure_backoffs.empty()) {
+       const auto next_retry = std::min_element(
+           worker_failure_backoffs.begin(), worker_failure_backoffs.end(),
+@@ -2899,6 +3049,58 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+       break;
+     case WaitKind::Control:
+       control_pipe.service_ready([&](const std::string &command) {
++        try {
++          auto request=nlohmann::json::parse(command,[](int depth,nlohmann::json::parse_event_t,const nlohmann::json&){if(depth>32)throw std::runtime_error("JSON nesting limit exceeded");return true;});
++          if(request.contains("protocolVersion")) {
++            auto response=nlohmann::json{{"protocolVersion",1},{"id",request.value("id",std::string{})},{"ok",true}};
++            try {
++              if(request.at("protocolVersion")!=1)throw std::runtime_error("PROTOCOL_VERSION_MISMATCH");
++              const auto action=request.at("command").get<std::string>();
++              if((action=="enable" || action=="reconnect" || action=="disconnect") && (pending_disconnect || disconnect_task.valid()))throw std::runtime_error("BLUETOOTH_DISCONNECT_PENDING");
++              if(action=="disconnect") {
++                const auto config=vds::load_config_db(options.db_path);
++                if(config.controllers.size()!=1 || config.controllers.front().profile!=vds::ControllerProfile::Ds5)throw std::runtime_error("CONTROLLER_NOT_CONFIGURED");
++                if(!exclusive_owner_reason().empty())throw std::runtime_error("CONTROLLER_BUSY");
++                {std::ofstream file(paused_path);file<<"paused\n";if(!file)throw std::runtime_error("Cannot save emulation state");}
++                pending_disconnect=config.controllers.front().address;
++                bridge_enabled=false;disconnect_failed=false;bluetooth_disconnected=false;last_error.clear();scan_requested=true;
++                for(auto& worker:workers)worker->stop_requested=true;
++              } else if(action=="pause" || action=="enable") {
++                const bool enable=action=="enable";
++                if(enable)std::filesystem::remove(paused_path);
++                else {std::ofstream file(paused_path);file<<"paused\n";if(!file)throw std::runtime_error("Cannot save bridge state");}
++                bridge_enabled=enable;scan_requested=true;disconnect_failed=false;last_error.clear();
++                if(enable)bluetooth_disconnected=false;
++              } else if(action=="reconnect") {
++                if(!bridge_enabled)throw std::runtime_error("BRIDGE_PAUSED");
++                for(auto& worker:workers)worker->stop_requested=true;
++                worker_failure_backoffs.clear();last_error.clear();scan_requested=true;
++              } else if(action!="getState" && action!="hello" && action!="getDiagnostics")throw std::runtime_error("UNKNOWN_COMMAND");
++              nlohmann::json state;
++              {
++                std::lock_guard lock(g_telemetry.mutex);const auto now=Clock::now();
++                const bool running=std::any_of(workers.begin(),workers.end(),[](const auto& worker){return !worker->stop_requested && !worker->done;});
++                const bool active=running && g_telemetry.last_input!=Clock::time_point{} && now-g_telemetry.last_input<std::chrono::seconds(2);
++                state["state"]=!bridge_enabled?((!workers.empty() || pending_disconnect || disconnect_task.valid())?"Stopping":disconnect_failed?"Error":"Paused"):!blocked_reason.empty()?(blocked_reason=="USB"?"Wired":"Conflict"):active?"Active":!workers.empty()?"Connecting":last_error.empty()?"Waiting":"Error";
++                state["batteryPercent"]=g_telemetry.battery?nlohmann::json(*g_telemetry.battery):nlohmann::json(nullptr);
++                state["charging"]=g_telemetry.charging;state["muted"]=g_telemetry.muted;state["headphones"]=g_telemetry.headphones;
++                state["microphoneActive"]=g_telemetry.last_mic!=Clock::time_point{} && now-g_telemetry.last_mic<std::chrono::seconds(1);
++                state["audioActive"]=g_telemetry.last_audio!=Clock::time_point{} && now-g_telemetry.last_audio<std::chrono::seconds(1);
++                auto metrics=g_telemetry.metrics.snapshot(now);
++                state["packetsPerSecond"]=metrics.packets_per_second;state["gapsOver10ms"]=metrics.gaps_over_10ms;state["maxGapMs"]=metrics.max_gap_ms;state["observedSeconds"]=metrics.observed_seconds;
++              }
++              state["enabled"]=bridge_enabled;state["bluetoothDisconnected"]=bluetooth_disconnected;
++              state["error"]=!blocked_reason.empty()?(blocked_reason=="USB"?"Подключён USB DualSense. Эмуляция приостановлена.":"DSX запущен. Эмуляция приостановлена до его закрытия."):state["state"]=="Active"?"":last_error;state["transport"]=blocked_reason=="USB"?"USB":"Bluetooth";state["rssi"]=nullptr;
++              if(action=="getDiagnostics") {
++                std::ifstream file(options.log_path);std::deque<std::string> lines;std::string line;std::size_t bytes=0;
++                while(std::getline(file,line)){if(line.size()>1024)line.resize(1024);lines.push_back(line);bytes+=line.size();while(lines.size()>256 || bytes>8192){bytes-=lines.front().size();lines.pop_front();}}
++                state["logLines"]=lines;
++              }
++              response["payload"]=state;
++            }catch(const std::exception& error){response["ok"]=false;response["error"]=error.what();}
++            return response.dump(-1,' ',false,nlohmann::json::error_handler_t::replace)+"\n";
++          }
++        }catch(const std::exception&){}
+         std::uint32_t current_trace_flags = trace_flags.load();
+         const std::string reply = handle_supervisor_control_command(
+             command, workers, options.db_path, current_trace_flags,
+@@ -2935,6 +3137,7 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+   try {
+     g_stop_requested = false;
+     const Options options = parse_platform_args(argc, argv);
++      if(service_mode && options.owner_sid.empty())throw std::runtime_error("Service requires --owner-sid");
+     UniqueHandle stop_event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
+     if (!stop_event) {
+       throw std::runtime_error("failed to create stop event: " +
+@@ -2946,6 +3149,10 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+     }
+ 
+     vds::Logger logger(options.log_path);
++    if(options.repair_only) {
++      vds::win::hidhide::configure_recovery(options.db_path+".hidhide-recovery.json");
++      vds::win::hidhide::recover_changes();return 0;
++    }
+     try {
+       TimerResolutionGuard timer_resolution(kWindowsTimerResolutionMs);
+       logger.log(
+@@ -2965,7 +3172,8 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+                        " detail=" + kWindowsHidHideProviderUnavailable);
+         throw std::runtime_error(kWindowsHidHideProviderUnavailable);
+       }
+-      vds::win::hidhide::register_daemon();
++      vds::win::hidhide::configure_recovery(options.db_path+".hidhide-recovery.json");
++      vds::win::hidhide::recover_changes();
+       if (service_mode) {
+         update_service_status(SERVICE_RUNNING);
+         logger.log(vds::LogScope::Daemon, vds::LogLevel::Info,
+@@ -3011,7 +3219,7 @@ void WINAPI service_main(DWORD argc, LPSTR *argv) {
+ 
+   update_service_status(SERVICE_START_PENDING, ERROR_SUCCESS, 5000);
+   g_service_exit_code = static_cast<DWORD>(
+-      run_windows_daemon(static_cast<int>(argc), argv, true));
++      run_windows_daemon(g_process_argc, g_process_argv, true));
+   update_service_status(SERVICE_STOPPED, g_service_exit_code == 0
+                                              ? ERROR_SUCCESS
+                                              : ERROR_SERVICE_SPECIFIC_ERROR);
+@@ -3035,6 +3243,7 @@ bool dispatch_service_if_needed() {
+ }
+ 
+ int main(int argc, char **argv) {
++  g_process_argc=argc;g_process_argv=argv;
+   try {
+     if (dispatch_service_if_needed()) {
+       return static_cast<int>(g_service_exit_code);
+diff --git a/src/vds_config.cc b/src/vds_config.cc
+index 988d2e4..dbbb397 100644
+--- a/src/vds_config.cc
++++ b/src/vds_config.cc
+@@ -234,10 +234,12 @@ std::string port_path_for_index(unsigned port) {
+ }
+ 
+ std::optional<unsigned> port_index_from_path(std::string_view path) {
++  bool one_based = false;
+ #ifdef _WIN32
+   constexpr std::string_view dos_prefix = R"(\\.\vds)";
+   constexpr std::string_view nt_prefix = R"(\\?\vds)";
+   constexpr std::string_view short_prefix = "vds";
++  constexpr std::string_view usbip_prefix = "usbip://127.0.0.1:3240/1-";
+   std::string_view port_text;
+   if (path.rfind(dos_prefix, 0) == 0) {
+     port_text = path.substr(dos_prefix.size());
+@@ -245,6 +247,9 @@ std::optional<unsigned> port_index_from_path(std::string_view path) {
+     port_text = path.substr(nt_prefix.size());
+   } else if (path.rfind(short_prefix, 0) == 0) {
+     port_text = path.substr(short_prefix.size());
++  } else if (path.rfind(usbip_prefix, 0) == 0) {
++    port_text = path.substr(usbip_prefix.size());
++    one_based = true;
+   } else {
+     return std::nullopt;
+   }
+@@ -262,10 +267,16 @@ std::optional<unsigned> port_index_from_path(std::string_view path) {
+   unsigned value = 0;
+   for (const char ch : port_text) {
+     value = value * 10 + static_cast<unsigned>(ch - '0');
+-    if (value >= kMaxPortCount) {
++    if (value >= kMaxPortCount + (one_based ? 1u : 0u)) {
+       return std::nullopt;
+     }
+   }
++#ifdef _WIN32
++  if (one_based) {
++    if (value == 0) return std::nullopt;
++    --value;
++  }
++#endif
+   return value;
+ }
+ 
+diff --git a/src/vds_log.cc b/src/vds_log.cc
+index 4841176..71f0283 100644
+--- a/src/vds_log.cc
++++ b/src/vds_log.cc
+@@ -135,6 +135,17 @@ void Logger::reopen() {
+ 
+ void Logger::log(LogScope scope, LogLevel level, std::string_view message) {
+   std::lock_guard guard(mutex_);
++  if(file_.tellp()>=10*1024*1024) {
++    file_.close();
++    std::error_code error;
++    std::filesystem::remove(path_+".4",error);
++    for(int i=3;i>=1;--i) {
++      const auto old=path_+"."+std::to_string(i),next=path_+"."+std::to_string(i+1);
++      if(std::filesystem::exists(old))std::filesystem::rename(old,next,error);
++    }
++    std::filesystem::rename(path_,path_+".1",error);
++    file_=open_file();
++  }
+   file_ << local_timestamp() << '|' << log_scope_name(scope) << '|'
+         << log_level_name(level) << '|';
+   write_log_message(file_, message);
+diff --git a/src/vds_protocol.cc b/src/vds_protocol.cc
+index 560fe37..43cf799 100644
+--- a/src/vds_protocol.cc
++++ b/src/vds_protocol.cc
+@@ -480,11 +480,15 @@ feature_set_packet(std::span<const std::uint8_t> report) {
+ 
+ std::optional<UsbInputReport>
+ bt_input_to_usb_input(std::span<const std::uint8_t> packet) {
+-  if (packet.size() < kBtInputMinimumSize || packet[0] != kBtHidpInputPrefix ||
++  if (packet.size() != kBtStateReportSize+1 || packet[0] != kBtHidpInputPrefix ||
+       packet[kBtInputReportIdOffset] != VDS_BT_STATE_REPORT_ID ||
+       bt_input_payload_type(packet) != BtInputPayloadType::Control) {
+     return std::nullopt;
+   }
++  const auto expected=crc32_seeded(packet.first(packet.size()-4),0);
++  const auto offset=packet.size()-4;
++  const auto received=static_cast<std::uint32_t>(packet[offset]) | (static_cast<std::uint32_t>(packet[offset+1])<<8) | (static_cast<std::uint32_t>(packet[offset+2])<<16) | (static_cast<std::uint32_t>(packet[offset+3])<<24);
++  if(expected!=received)return std::nullopt;
+ 
+   UsbInputReport report{};
+   report[0] = VDS_USB_INPUT_REPORT_ID;
+@@ -515,9 +519,13 @@ BtInputPayloadType bt_input_payload_type(std::span<const std::uint8_t> packet) {
+ std::optional<std::span<const std::uint8_t, kMicOpusSize>>
+ bt_mic_opus_payload(std::span<const std::uint8_t> packet) {
+   if (bt_input_payload_type(packet) != BtInputPayloadType::Audio ||
+-      packet.size() < kBtMicOpusOffset + kMicOpusSize) {
++      packet.size() != kBtStateReportSize+1) {
+     return std::nullopt;
+   }
++  const auto expected=crc32_seeded(packet.first(packet.size()-4),0);
++  const auto offset=packet.size()-4;
++  const auto received=static_cast<std::uint32_t>(packet[offset]) | (static_cast<std::uint32_t>(packet[offset+1])<<8) | (static_cast<std::uint32_t>(packet[offset+2])<<16) | (static_cast<std::uint32_t>(packet[offset+3])<<24);
++  if(expected!=received)return std::nullopt;
+   return std::span<const std::uint8_t, kMicOpusSize>(
+       packet.data() + kBtMicOpusOffset, kMicOpusSize);
+ }
+diff --git a/tests/audio_tests.cc b/tests/audio_tests.cc
+new file mode 100644
+index 0000000..b677c3a
+--- /dev/null
++++ b/tests/audio_tests.cc
+@@ -0,0 +1,45 @@
++// SPDX-License-Identifier: MIT
++#include "vds_protocol.hh"
++#include <algorithm>
++#include <iostream>
++#include <stdexcept>
++
++void check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
++std::vector<std::uint8_t> pcm(unsigned channel,short value) {
++  std::vector<std::uint8_t> bytes(vds::kPcmWindowFrames*8,0);
++  for(size_t frame=0;frame<vds::kPcmWindowFrames;++frame) {
++    const auto sample=static_cast<unsigned short>(value);
++    bytes[frame*8+channel*2]=sample&255;
++    bytes[frame*8+channel*2+1]=sample>>8;
++  }
++  return bytes;
++}
++vds::AudioChunk extract(const std::vector<std::uint8_t>& bytes) {
++  vds::PcmAudioExtractor extractor;
++  auto chunks=extractor.push_usb_audio(bytes);
++  check(chunks.size()==1,"PCM window did not produce one chunk");return chunks.front();
++}
++int main() {
++  try {
++    const auto silence=extract(pcm(0,0));
++    check(!silence.has_signal && !silence.has_haptics_signal,"silence marked active");
++    for(unsigned channel=0;channel<4;++channel) {
++      const auto bytes=pcm(channel,10000);
++      const auto chunk=extract(bytes);
++      check(chunk.has_signal,"signal missing");
++      check(chunk.has_haptics_signal==(channel>=2),"speaker/haptics channel flag crossed");
++      const bool haptics=std::any_of(chunk.haptics.begin(),chunk.haptics.end(),[](auto s){return s!=0;});
++      check(haptics==(channel>=2),"speaker leaked into haptics or haptics missing");
++      if(channel>=2) check(chunk.speaker==silence.speaker,"haptics leaked into speaker encoder");
++      // USB reads can split a PCM frame at any byte boundary.
++      for(size_t split=1;split<8;++split) {
++        vds::PcmAudioExtractor fragmented;
++        auto first=fragmented.push_usb_audio(std::span(bytes).first(split));
++        check(first.empty(),"partial PCM frame emitted audio");
++        auto rest=fragmented.push_usb_audio(std::span(bytes).subspan(split));
++        check(rest.size()==1 && rest[0].haptics==chunk.haptics && rest[0].speaker==chunk.speaker,"fragmented PCM changed channel data");
++      }
++    }
++    std::cout<<"audio channel and fragmentation tests passed\n";return 0;
++  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
++}
+diff --git a/tests/config_tests.cc b/tests/config_tests.cc
+new file mode 100644
+index 0000000..c58e128
+--- /dev/null
++++ b/tests/config_tests.cc
+@@ -0,0 +1,38 @@
++// SPDX-License-Identifier: MIT
++#include "vds_config.hh"
++#include <iostream>
++#include <stdexcept>
++
++void check(bool value, const char* message) {
++  if (!value) throw std::runtime_error(message);
++}
++
++int main() {
++  try {
++#ifdef _WIN32
++    for (unsigned port = 0; port < vds::kMaxPortCount; ++port) {
++      const auto endpoint = "usbip://127.0.0.1:3240/1-" + std::to_string(port + 1);
++      check(vds::port_index_from_path(endpoint) == port, "USB/IP port roundtrip");
++      check(vds::port_index_from_path("vds" + std::to_string(port)) == port, "legacy port");
++    }
++    for (const auto* path : {"usbip://127.0.0.1:3240/1-0", "usbip://127.0.0.1:3240/1-9999999999999999",
++                            "usbip://127.0.0.1:3240/1-1junk", "usbip://127.0.0.1:3240/1-",
++                            "usbip://192.0.2.1:3240/1-1", "vds-1", "vds"}) {
++      check(!vds::port_index_from_path(path), "invalid endpoint accepted");
++    }
++    const std::vector<std::string> endpoints{"usbip://127.0.0.1:3240/1-1"};
++    vds::ConfigDb db;
++    db.controllers.push_back({"00:11:22:33:44:55", vds::ControllerProfile::Ds5, {0}});
++    vds::validate_config_assignments(db, endpoints);
++    db.controllers.front().ports = {1};
++    bool rejected = false;
++    try { vds::validate_config_assignments(db, endpoints); } catch (const std::runtime_error&) { rejected = true; }
++    check(rejected, "nonexistent port accepted");
++#endif
++    std::cout << "config port tests passed\n";
++    return 0;
++  } catch (const std::exception& error) {
++    std::cerr << error.what() << '\n';
++    return 1;
++  }
++}
+diff --git a/tests/hardware_probe.cc b/tests/hardware_probe.cc
+new file mode 100644
+index 0000000..dbcc083
+--- /dev/null
++++ b/tests/hardware_probe.cc
+@@ -0,0 +1,165 @@
++// SPDX-License-Identifier: MIT
++// Local hardware diagnostics; does not modify the default Windows endpoints.
++#define NOMINMAX
++#include <windows.h>
++#include <mmdeviceapi.h>
++#include <audioclient.h>
++#include <functiondiscoverykeys_devpkey.h>
++#include <mmsystem.h>
++#include <ks.h>
++#include <ksmedia.h>
++#include <wrl/client.h>
++#include <cmath>
++#include <iostream>
++#include <string>
++#include <vector>
++#include <cstring>
++using Microsoft::WRL::ComPtr;
++
++void defaults() {
++  ComPtr<IMMDeviceEnumerator> enumerator;
++  auto hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
++                            IID_PPV_ARGS(&enumerator));
++  if (FAILED(hr)) throw std::runtime_error("CoreAudio enumerator failed");
++  for (int flow=0; flow<2; ++flow) for (int role=0; role<3; ++role) {
++    ComPtr<IMMDevice> device;
++    hr = enumerator->GetDefaultAudioEndpoint(static_cast<EDataFlow>(flow), static_cast<ERole>(role), &device);
++    std::wcout << L"default " << flow << L' ' << role << L' ';
++    if (SUCCEEDED(hr)) { LPWSTR id=nullptr; device->GetId(&id); if(id) {std::wcout << id; CoTaskMemFree(id);} }
++    else std::wcout << L"unavailable";
++    std::wcout << L'\n';
++  }
++}
++
++void capture_microphone(bool audio, unsigned seconds=4) {
++  ComPtr<IMMDeviceEnumerator> enumerator;
++  if(FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator),nullptr,CLSCTX_ALL,IID_PPV_ARGS(&enumerator))))
++    throw std::runtime_error("Cannot enumerate capture endpoints");
++  ComPtr<IMMDeviceCollection> collection;
++  if(FAILED(enumerator->EnumAudioEndpoints(eCapture,DEVICE_STATE_ACTIVE,&collection)))
++    throw std::runtime_error("Cannot list capture endpoints");
++  UINT count=0; collection->GetCount(&count);
++  unsigned selected=0;
++  for(UINT i=0;i<count;++i) {
++    ComPtr<IMMDevice> device; collection->Item(i,&device);
++    ComPtr<IPropertyStore> properties;
++    if(FAILED(device->OpenPropertyStore(STGM_READ,&properties))) continue;
++    PROPVARIANT name; PropVariantInit(&name);
++    properties->GetValue(PKEY_Device_FriendlyName,&name);
++    const bool match=name.vt==VT_LPWSTR && std::wstring(name.pwszVal).find(L"DualSense")!=std::wstring::npos;
++    PropVariantClear(&name);
++    if(!match) continue;
++    ++selected;
++    std::wcout << L"capture_endpoint found\n";
++    if(!audio) continue;
++    ComPtr<IAudioClient> client;
++    HRESULT hr=device->Activate(__uuidof(IAudioClient),CLSCTX_ALL,nullptr,reinterpret_cast<void**>(client.GetAddressOf()));
++    if(FAILED(hr)) throw std::runtime_error("Cannot activate capture client");
++    WAVEFORMATEX* raw_format=nullptr;
++    hr=client->GetMixFormat(&raw_format);
++    if(FAILED(hr)) throw std::runtime_error("Cannot obtain capture format");
++    const auto block_align=raw_format->nBlockAlign;
++    const auto rate=raw_format->nSamplesPerSec;
++    const auto sample_bits=raw_format->wBitsPerSample;
++    const bool floating=raw_format->wFormatTag==WAVE_FORMAT_IEEE_FLOAT ||
++      (raw_format->wFormatTag==WAVE_FORMAT_EXTENSIBLE && reinterpret_cast<WAVEFORMATEXTENSIBLE*>(raw_format)->SubFormat==KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
++    hr=client->Initialize(AUDCLNT_SHAREMODE_SHARED,0,10000000,0,raw_format,nullptr);
++    CoTaskMemFree(raw_format);
++    if(FAILED(hr)) throw std::runtime_error("Cannot initialize microphone: "+std::to_string(hr));
++    ComPtr<IAudioCaptureClient> capture;
++    if(FAILED(client->GetService(IID_PPV_ARGS(&capture)))) throw std::runtime_error("Cannot obtain capture service");
++    if(FAILED(client->Start())) throw std::runtime_error("Cannot start microphone");
++    std::uint64_t frames_total=0, nonzero_bytes=0, silent_frames=0;
++    const auto started=GetTickCount64();
++    const auto deadline=started+seconds*1000;
++    auto next_summary=started+1000;
++    std::uint64_t bin_nonzero=0,bin_frames=0;
++    double bin_peak=0,bin_square_sum=0;std::uint64_t bin_samples=0;
++    while(GetTickCount64()<deadline) {
++      UINT32 frames=0;
++      hr=capture->GetNextPacketSize(&frames);
++      if(FAILED(hr)) {client->Stop();throw std::runtime_error("Cannot query capture packet");}
++      if(!frames) {Sleep(5);continue;}
++      BYTE* data=nullptr; DWORD flags=0;
++      hr=capture->GetBuffer(&data,&frames,&flags,nullptr,nullptr);
++      if(FAILED(hr)) {client->Stop();throw std::runtime_error("Cannot read microphone");}
++      frames_total+=frames;
++      bin_frames+=frames;
++      if(flags&AUDCLNT_BUFFERFLAGS_SILENT) silent_frames+=frames;
++      else if(data) {
++        const auto bytes=static_cast<size_t>(frames)*block_align;
++        for(size_t j=0;j<bytes;++j) {nonzero_bytes+=data[j]!=0;bin_nonzero+=data[j]!=0;}
++        const auto sample_bytes=sample_bits/8;
++        if(!sample_bytes) throw std::runtime_error("Invalid microphone sample size");
++        for(size_t j=0;j+sample_bytes<=bytes;j+=sample_bytes) {
++          double sample=0;
++          if(floating && sample_bits==32) {float value;std::memcpy(&value,data+j,4);sample=value;}
++          else if(!floating && sample_bits==16) {short value;std::memcpy(&value,data+j,2);sample=value/32768.0;}
++          bin_peak=std::max(bin_peak,std::abs(sample));bin_square_sum+=sample*sample;++bin_samples;
++        }
++      }
++      capture->ReleaseBuffer(frames);
++      if(GetTickCount64()>=next_summary) {
++        std::wcout<<L"mic_bin elapsed_ms="<<GetTickCount64()-started<<L" frames="<<bin_frames<<L" nonzero_bytes="<<bin_nonzero<<L" peak="<<bin_peak<<L" rms="<<std::sqrt(bin_square_sum/std::max<std::uint64_t>(1,bin_samples))<<L'\n';
++        bin_nonzero=bin_frames=bin_samples=0;bin_peak=bin_square_sum=0;next_summary+=1000;
++      }
++    }
++    client->Stop();
++    std::wcout << L"microphone frames=" << frames_total << L" sample_rate=" << rate << L" nonzero_bytes=" << nonzero_bytes << L" silent_frames=" << silent_frames << L'\n';
++    if(!frames_total) throw std::runtime_error("No microphone frames received");
++  }
++  if(audio && selected!=1) throw std::runtime_error("Expected exactly one DualSense capture endpoint, found "+std::to_string(selected));
++}
++
++int main(int argc, char** argv) {
++  CoInitializeEx(nullptr, COINIT_MULTITHREADED);
++  try {
++    defaults();
++    const bool audio = argc==2 && std::string(argv[1])=="--audio-test";
++    const bool mic_only = argc==2 && std::string(argv[1])=="--mic-test";
++    const bool stereo = argc==2 && std::string(argv[1])=="--stereo-test";
++    if(argc>1 && !audio && !mic_only && !stereo) throw std::runtime_error("Unknown argument");
++    unsigned played=0;
++    for (UINT i=0; i<waveOutGetNumDevs(); ++i) {
++      WAVEOUTCAPSW caps{}; waveOutGetDevCapsW(i,&caps,sizeof(caps));
++      if (std::wstring(caps.szPname).find(L"DualSense")==std::wstring::npos) continue;
++      std::wcout << L"render " << i << L" channels=" << caps.wChannels << L'\n';
++      if (!audio && !stereo) continue;
++      WAVEFORMATEXTENSIBLE format{};
++      format.Format={WAVE_FORMAT_EXTENSIBLE,4,48000,384000,8,16,22};
++      format.Samples.wValidBitsPerSample=16;
++      format.dwChannelMask=SPEAKER_FRONT_LEFT|SPEAKER_FRONT_RIGHT|SPEAKER_BACK_LEFT|SPEAKER_BACK_RIGHT;
++      format.SubFormat=KSDATAFORMAT_SUBTYPE_PCM;
++      HWAVEOUT output{};
++      auto result=waveOutOpen(&output,i,&format.Format,0,0,CALLBACK_NULL);
++      if (result!=MMSYSERR_NOERROR) throw std::runtime_error("Cannot open 4-channel DualSense audio: "+std::to_string(result));
++      // 1 s speaker only, 1 s silence, 1 s haptics only, 1 s silence.
++      std::vector<short> pcm(48000*4*4);
++      for (size_t frame=0; frame<48000*4; ++frame) {
++        const auto second=frame/48000;
++        const double t=static_cast<double>(frame%48000)/48000;
++        const double fade=std::min(1.0,std::min(t*100,(1.0-t)*100));
++        if(stereo) {
++          if(second==0) pcm[frame*4]=static_cast<short>(1500*fade*std::sin(2*3.141592653589793*440*t));
++          if(second==2) pcm[frame*4+1]=static_cast<short>(1500*fade*std::sin(2*3.141592653589793*880*t));
++        } else {
++          if(second==0) pcm[frame*4]=pcm[frame*4+1]=static_cast<short>(1500*fade*std::sin(2*3.141592653589793*660*t));
++          if(second==2) pcm[frame*4+2]=pcm[frame*4+3]=static_cast<short>(3000*fade*std::sin(2*3.141592653589793*80*t));
++        }
++      }
++      WAVEHDR header{}; header.lpData=reinterpret_cast<char*>(pcm.data()); header.dwBufferLength=static_cast<DWORD>(pcm.size()*2);
++      waveOutPrepareHeader(output,&header,sizeof(header));
++      result=waveOutWrite(output,&header,sizeof(header));
++      const auto deadline=GetTickCount64()+8000;
++      while(result==0 && !(header.dwFlags&WHDR_DONE) && GetTickCount64()<deadline) Sleep(10);
++      const bool complete=(header.dwFlags&WHDR_DONE)!=0;
++      waveOutReset(output); waveOutUnprepareHeader(output,&header,sizeof(header)); waveOutClose(output);
++      if(!complete || result) throw std::runtime_error("Audio playback did not complete");
++      std::wcout << L"4-channel playback completed\n";
++      ++played;
++    }
++    if((audio || stereo) && played!=1)throw std::runtime_error("Expected exactly one DualSense playback endpoint");
++    capture_microphone(audio || mic_only,mic_only?24:4); // Samples are discarded, never saved.
++    CoUninitialize(); return 0;
++  } catch(const std::exception& e) {std::cerr << e.what() << '\n'; CoUninitialize(); return 1;}
++}
+diff --git a/tests/hid_probe.cc b/tests/hid_probe.cc
+new file mode 100644
+index 0000000..ea06e24
+--- /dev/null
++++ b/tests/hid_probe.cc
+@@ -0,0 +1,122 @@
++// SPDX-License-Identifier: MIT
++#define NOMINMAX
++#include <windows.h>
++#include <hidsdi.h>
++#include <setupapi.h>
++#include <array>
++#include <cstring>
++#include <iostream>
++#include <set>
++#include <stdexcept>
++#include <string>
++#include <vector>
++#include <algorithm>
++#include <nlohmann/json.hpp>
++#include "vds/ds5_protocol.h"
++
++struct Handle {
++  HANDLE value=INVALID_HANDLE_VALUE;
++  ~Handle(){if(value!=INVALID_HANDLE_VALUE && value) CloseHandle(value);}
++};
++bool transfer(HANDLE device, void* data, DWORD size, bool write, DWORD& count, DWORD timeout) {
++  Handle event{CreateEventW(nullptr,TRUE,FALSE,nullptr)};
++  OVERLAPPED operation{}; operation.hEvent=event.value;
++  BOOL ok=write?WriteFile(device,data,size,&count,&operation):ReadFile(device,data,size,&count,&operation);
++  if(!ok && GetLastError()!=ERROR_IO_PENDING) return false;
++  if(!ok && WaitForSingleObject(event.value,timeout)!=WAIT_OBJECT_0) {
++    CancelIoEx(device,&operation); GetOverlappedResult(device,&operation,&count,TRUE); return false;
++  }
++  return GetOverlappedResult(device,&operation,&count,TRUE)!=FALSE;
++}
++void send(HANDLE device, const vds_set_state_data& state) {
++  std::array<unsigned char,48> report{}; report[0]=2;
++  std::memcpy(report.data()+1,&state,sizeof(state)); DWORD written=0;
++  if(!transfer(device,report.data(),report.size(),true,written,2000) || written!=report.size())
++    throw std::runtime_error("Virtual HID output failed");
++}
++int main(int argc,char** argv) {
++  bool input_only=false,physical=false;unsigned seconds=10;
++  for(int i=1;i<argc;++i){std::string arg(argv[i]);if(arg=="--input-only")input_only=true;else if(arg=="--physical-usb"){physical=true;input_only=true;}else if(arg.rfind("--seconds=",0)==0)seconds=std::clamp(std::stoul(arg.substr(10)),1ul,120ul);else{std::cerr<<"Unknown argument\n";return 2;}}
++  Handle device;
++  vds_set_state_data reset{};
++  reset.allow_right_trigger_ffb=reset.allow_left_trigger_ffb=reset.allow_led_color=reset.allow_player_indicators=1;
++  reset.right_trigger_ffb[0]=reset.left_trigger_ffb[0]=5;
++  try {
++    GUID guid; HidD_GetHidGuid(&guid);
++    auto info=SetupDiGetClassDevsW(&guid,nullptr,nullptr,DIGCF_PRESENT|DIGCF_DEVICEINTERFACE);
++    if(info==INVALID_HANDLE_VALUE) throw std::runtime_error("HID enumeration failed");
++    for(DWORD i=0;;++i) {
++      SP_DEVICE_INTERFACE_DATA entry{sizeof(entry)};
++      if(!SetupDiEnumDeviceInterfaces(info,nullptr,&guid,i,&entry)) break;
++      DWORD size=0; SetupDiGetDeviceInterfaceDetailW(info,&entry,nullptr,0,&size,nullptr);
++      std::vector<unsigned char> storage(size);
++      if(size<sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W)) continue;
++      auto detail=reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(storage.data()); detail->cbSize=sizeof(*detail);
++      if(!SetupDiGetDeviceInterfaceDetailW(info,&entry,detail,size,nullptr,nullptr)) continue;
++      HANDLE candidate=CreateFileW(detail->DevicePath,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,nullptr);
++      if(candidate==INVALID_HANDLE_VALUE) continue;
++      HIDD_ATTRIBUTES attributes{sizeof(attributes)}; wchar_t serial[128]{};
++      std::wstring path(detail->DevicePath);std::transform(path.begin(),path.end(),path.begin(),towlower);
++      const bool identity=HidD_GetSerialNumberString(candidate,serial,sizeof(serial)) && std::wstring(serial)==L"DSEmu-DualSense-Port-0";
++      const bool match=HidD_GetAttributes(candidate,&attributes) && attributes.VendorID==0x054c && attributes.ProductID==0x0ce6
++          && (physical?(!identity && path.find(L"vid_054c&pid_0ce6")!=std::wstring::npos):identity);
++      if(match) {device.value=candidate;break;}
++      CloseHandle(candidate);
++    }
++    SetupDiDestroyDeviceInfoList(info);
++    if(device.value==INVALID_HANDLE_VALUE) throw std::runtime_error("Our virtual DualSense was not found");
++    nlohmann::json firmware=nullptr;
++    std::array<unsigned char,64> feature{};feature[0]=0x20;
++    if(HidD_GetFeature(device.value,feature.data(),feature.size())) {
++      const auto le32=[&](unsigned offset){return static_cast<std::uint32_t>(feature[offset])|(static_cast<std::uint32_t>(feature[offset+1])<<8)|(static_cast<std::uint32_t>(feature[offset+2])<<16)|(static_cast<std::uint32_t>(feature[offset+3])<<24);};
++      firmware={{"hardwareVersion",le32(24)},{"firmwareVersion",le32(28)},{"updateVersion",static_cast<unsigned>(feature[44]|(feature[45]<<8))}};
++    }
++    if(!input_only)for(int color=0;color<3;++color) {
++      auto state=reset;
++      state.led_red=color==0?60:0;state.led_green=color==1?60:0;state.led_blue=color==2?60:0;
++      send(device.value,state);Sleep(800);
++    }
++    if(!input_only)for(int side=0;side<2;++side) {
++      auto state=reset;state.led_blue=40;
++      auto trigger=side==0?state.right_trigger_ffb:state.left_trigger_ffb;
++      trigger[0]=1;trigger[1]=80;trigger[2]=60; // Brief, moderate continuous resistance.
++      send(device.value,state);Sleep(3500);
++    }
++    if(!input_only)send(device.value,reset);
++    std::uint64_t reports=0,invalid=0;
++    std::set<std::array<unsigned char,6>> axes;
++    std::set<std::array<unsigned char,3>> buttons;
++    std::array<int,6> axis_min,axis_max;axis_min.fill(255);axis_max.fill(0);
++    std::array<int,3> gyro_min,gyro_max,accel_min,accel_max;gyro_min.fill(32767);accel_min.fill(32767);gyro_max.fill(-32768);accel_max.fill(-32768);
++    std::array<bool,8> dpad{};unsigned seen=0,max_contacts=0;std::uint64_t touch_samples=0;int touch_x_min=4095,touch_x_max=0,touch_y_min=4095,touch_y_max=0;
++    std::array<unsigned char,64> last{};
++    const auto deadline=GetTickCount64()+seconds*1000;
++    while(GetTickCount64()<deadline) {
++      std::array<unsigned char,64> input{};DWORD count=0;
++      if(!transfer(device.value,input.data(),input.size(),false,count,1000)) continue;
++      if(count!=64 || input[0]!=1) {++invalid;continue;}
++      ++reports;
++      last=input;
++      for(unsigned axis=0;axis<6;++axis){axis_min[axis]=std::min(axis_min[axis],static_cast<int>(input[1+axis]));axis_max[axis]=std::max(axis_max[axis],static_cast<int>(input[1+axis]));}
++      seen|=(input[8]>>4)|(input[9]<<4)|((input[10]&7)<<12);
++      if((input[8]&15)<8)dpad[input[8]&15]=true;
++      const auto s16=[&](unsigned offset){return static_cast<int>(static_cast<std::int16_t>(input[offset]|(input[offset+1]<<8)));};
++      for(unsigned axis=0;axis<3;++axis){auto gyro=s16(16+axis*2),accel=s16(22+axis*2);gyro_min[axis]=std::min(gyro_min[axis],gyro);gyro_max[axis]=std::max(gyro_max[axis],gyro);accel_min[axis]=std::min(accel_min[axis],accel);accel_max[axis]=std::max(accel_max[axis],accel);}
++      unsigned contacts=0;
++      for(unsigned point=0;point<2;++point){const auto offset=33+point*4;if(!(input[offset]&128)){++contacts;++touch_samples;const int x=input[offset+1]|((input[offset+2]&15)<<8),y=(input[offset+2]>>4)|(input[offset+3]<<4);touch_x_min=std::min(touch_x_min,x);touch_x_max=std::max(touch_x_max,x);touch_y_min=std::min(touch_y_min,y);touch_y_max=std::max(touch_y_max,y);}}
++      max_contacts=std::max(max_contacts,contacts);
++      axes.insert({input[1],input[2],input[3],input[4],input[5],input[6]});
++      buttons.insert({input[8],input[9],input[10]});
++    }
++    const char* names[]{"Square","Cross","Circle","Triangle","L1","R1","L2","R2","Create","Options","L3","R3","PS","TouchpadClick","Mute"};
++    std::vector<std::string> pressed,missing;
++    for(unsigned bit=0;bit<15;++bit)((seen&(1u<<bit))?pressed:missing).push_back(names[bit]);
++    nlohmann::json result={{"transport",physical?"physical-usb":"virtual-usb-over-bluetooth"},{"reports",reports},{"invalidReports",invalid},{"axisMin",axis_min},{"axisMax",axis_max},{"buttonsSeen",pressed},{"buttonsMissing",missing},{"dpadDirectionsSeen",dpad},{"gyroMin",gyro_min},{"gyroMax",gyro_max},{"accelMin",accel_min},{"accelMax",accel_max},{"maxTouchContacts",max_contacts},{"touchSamples",touch_samples},{"touchXRange",{touch_x_min,touch_x_max}},{"touchYRange",{touch_y_min,touch_y_max}},{"lastAxes",{last[1],last[2],last[3],last[4],last[5],last[6]}},{"firmware",firmware}};
++    std::cout<<result.dump(2)<<'\n';
++    if(!input_only)send(device.value,reset);
++    return reports?0:1;
++  } catch(const std::exception& e) {
++    if(!input_only && device.value!=INVALID_HANDLE_VALUE) {try{send(device.value,reset);}catch(...){}}
++    std::cerr<<e.what()<<'\n';return 1;
++  }
++}
+diff --git a/tests/hidhide_tests.cc b/tests/hidhide_tests.cc
+new file mode 100644
+index 0000000..b489b03
+--- /dev/null
++++ b/tests/hidhide_tests.cc
+@@ -0,0 +1,52 @@
++// SPDX-License-Identifier: MIT
++#define NOMINMAX
++#include <windows.h>
++#include <filesystem>
++#include <fstream>
++#include <iostream>
++#include <stdexcept>
++#include "platform/win32/vds_hidhide.hh"
++#include "vds_log.hh"
++#include <nlohmann/json.hpp>
++void check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
++std::string read(const std::filesystem::path& path){std::ifstream s(path);return {std::istreambuf_iterator<char>(s),{}};}
++int main(int argc,char** argv) {
++  const auto temp=std::filesystem::temp_directory_path()/("dsemu-hidhide-"+std::to_string(GetCurrentProcessId()));
++  std::filesystem::create_directories(temp);
++  const auto state=temp/"state.txt";
++  const auto mock=std::filesystem::absolute(argv[0]).parent_path()/"dsemu_mock_hidhide.exe";
++  if(!std::filesystem::exists(mock)){std::cerr<<"mock backend missing\n";return 1;}
++  SetEnvironmentVariableW(L"VDS_HIDHIDE_CLI",mock.c_str());
++  SetEnvironmentVariableW(L"DSEMU_MOCK_HIDHIDE_STATE",state.c_str());
++  try {
++    vds::Logger logger((temp/"log.txt").string());
++    vds::win::hidhide::configure_recovery((temp/"recovery.json").string());
++    const auto write=[&](std::string text){std::ofstream s(state);s<<text;};
++    write("--cloak-off\n--inv-off\n--dev-hide \"HID\\TARGET\"\n");
++    {vds::win::hidhide::DeviceGuard guard("HID\\TARGET",logger);check(read(state).find("--cloak-on")!=std::string::npos,"cloak not enabled");}
++    check(read(state).find("--cloak-off")!=std::string::npos,"initial cloak state not restored");
++    check(read(state).find("--dev-hide \"HID\\TARGET\"")!=std::string::npos,"pre-existing entry removed");
++    write("--cloak-off\n--inv-off\n");
++    {vds::win::hidhide::DeviceGuard guard("HID\\TARGET",logger);}
++    check(read(state).find("--dev-hide")==std::string::npos,"own device entry left behind");
++    write("--cloak-off\n--inv-off\n--dev-hide \"HID\\OTHER\"\n");
++    const auto before=read(state);bool rejected=false;
++    try{vds::win::hidhide::DeviceGuard guard("HID\\TARGET",logger);}catch(const std::runtime_error&){rejected=true;}
++    check(rejected && read(state)==before,"unrelated devices affected by global cloak");
++    write("--cloak-off\n--inv-on\n");rejected=false;
++    try{vds::win::hidhide::DeviceGuard guard("HID\\TARGET",logger);}catch(const std::runtime_error&){rejected=true;}
++    check(rejected && read(state)=="--cloak-off\n--inv-on\n","inverse mode was changed");
++    write("--cloak-on\n--inv-off\n--dev-hide \"HID\\OTHER\"\n");
++    {vds::win::hidhide::DeviceGuard guard("HID\\TARGET",logger);}
++    check(read(state).find("--cloak-on")!=std::string::npos && read(state).find("HID\\OTHER")!=std::string::npos,"existing active configuration changed");
++    // Simulate an interrupted lease: durable intent exists, destructor did not run.
++    const auto executable=std::filesystem::absolute(argv[0]).string();
++    write("--cloak-on\n--inv-off\n--dev-hide \"HID\\TARGET\"\n--app-reg \""+executable+"\"\n");
++    {std::ofstream journal(temp/"recovery.json");journal<<nlohmann::json{{"schema",1},{"device","HID\\TARGET"},{"daemon",executable},{"hideAdded",true},{"cloakEnabled",true},{"appAdded",true}};}
++    vds::win::hidhide::recover_changes();
++    check(read(state).find("--cloak-off")!=std::string::npos && read(state).find("--dev-hide")==std::string::npos && read(state).find("--app-reg")==std::string::npos,"crash recovery did not revert owned changes");
++    check(!std::filesystem::exists(temp/"recovery.json"),"completed journal retained");
++    std::cout<<"HidHide ownership and cloak restoration tests passed\n";
++    return 0;
++  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
++}
+diff --git a/tests/metrics_tests.cc b/tests/metrics_tests.cc
+new file mode 100644
+index 0000000..4b53cdb
+--- /dev/null
++++ b/tests/metrics_tests.cc
+@@ -0,0 +1,23 @@
++// SPDX-License-Identifier: MIT
++#include "dsemu_metrics.hh"
++#include <iostream>
++#include <stdexcept>
++void check(bool x,const char* s){if(!x)throw std::runtime_error(s);}
++int main(){try{
++  check(dsemu::decode_battery_status(0x00).percent==5,"empty battery approximation");
++  check(dsemu::decode_battery_status(0x1a).percent==100 && dsemu::decode_battery_status(0x1a).charging,"charging status");
++  check(dsemu::decode_battery_status(0x20).percent==100 && !dsemu::decode_battery_status(0x20).charging,"full battery status");
++  for(const auto raw:{0xa0,0xb0,0xf0,0x0f})check(!dsemu::decode_battery_status(raw).percent,"invalid battery status accepted");
++  using namespace std::chrono;
++  dsemu::InputMetrics metrics;dsemu::InputMetrics::Clock::time_point start{};
++  metrics.add(start);metrics.add(start+milliseconds(10));metrics.add(start+milliseconds(21));
++  auto sample=metrics.snapshot(start+milliseconds(21));
++  check(sample.gaps_over_10ms==1 && sample.max_gap_ms==11,"10 ms threshold or max incorrect");
++  sample=metrics.snapshot(start+seconds(61));
++  check(sample.gaps_over_10ms==0 && sample.max_gap_ms==0 && sample.packets_per_second==0,"expired metrics retained");
++  dsemu::InputMetrics regular;
++  for(int i=0;i<=31000;++i)regular.add(start+milliseconds(2*i));
++  sample=regular.snapshot(start+seconds(62));
++  check(sample.packets_per_second==500 && sample.max_gap_ms==2 && sample.observed_seconds==60,"sliding minute incorrect");
++  std::cout<<"metrics tests passed\n";return 0;
++}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+diff --git a/tests/mock_hidhide.cc b/tests/mock_hidhide.cc
+new file mode 100644
+index 0000000..1f7e3aa
+--- /dev/null
++++ b/tests/mock_hidhide.cc
+@@ -0,0 +1,31 @@
++// SPDX-License-Identifier: MIT
++#include <windows.h>
++#include <algorithm>
++#include <cstdlib>
++#include <fstream>
++#include <iostream>
++#include <string>
++#include <vector>
++int main(int argc,char** argv) {
++  char* path=nullptr;size_t len=0;_dupenv_s(&path,&len,"DSEMU_MOCK_HIDHIDE_STATE");
++  if(!path)return 3;
++  std::string filename(path);free(path);
++  std::vector<std::string> lines;std::string line;
++  {std::ifstream input(filename);while(std::getline(input,line))lines.push_back(line);}
++  const auto prefix=[](const std::string& value,const std::string& p){return value.rfind(p,0)==0;};
++  for(int i=1;i<argc;++i) {
++    std::string command(argv[i]);
++    if(command=="--cloak-state" || command=="--inv-state" || command=="--app-list" || command=="--dev-list") {
++      std::string p=command=="--cloak-state"?"--cloak-":command=="--inv-state"?"--inv-":command=="--app-list"?"--app-reg ":"--dev-hide ";
++      for(const auto& s:lines)if(prefix(s,p))std::cout<<s<<'\n';
++    } else if(command=="--cloak-on" || command=="--cloak-off") {
++      lines.erase(std::remove_if(lines.begin(),lines.end(),[&](const auto& s){return prefix(s,"--cloak-");}),lines.end());lines.push_back(command);
++    } else if(command=="--app-reg" || command=="--app-unreg" || command=="--dev-hide" || command=="--dev-unhide") {
++      if(++i>=argc)return 4;
++      auto value=(command=="--dev-unhide"?"--dev-hide":command=="--app-unreg"?"--app-reg":command)+std::string(" \"")+argv[i]+"\"";
++      if(command=="--dev-unhide" || command=="--app-unreg")lines.erase(std::remove(lines.begin(),lines.end(),value),lines.end());
++      else if(std::find(lines.begin(),lines.end(),value)==lines.end())lines.push_back(value);
++    } else return 5;
++  }
++  std::ofstream output(filename,std::ios::trunc);for(const auto& s:lines)output<<s<<'\n';return output?0:6;
++}
+diff --git a/tests/protocol_tests.cc b/tests/protocol_tests.cc
+new file mode 100644
+index 0000000..e004e40
+--- /dev/null
++++ b/tests/protocol_tests.cc
+@@ -0,0 +1,64 @@
++// SPDX-License-Identifier: MIT
++#include "vds_protocol.hh"
++#include "vds/ds5_usb.h"
++#include "platform/win32/vds_identity.hh"
++#include <iostream>
++#include <stdexcept>
++
++void check(bool value, const char* message) { if(!value) throw std::runtime_error(message); }
++
++// Slow bitwise reference over the HIDP prefix plus payload, independent of
++// the production lookup table and precomputed seed.
++std::uint32_t reference_crc(std::uint8_t prefix, std::span<const std::uint8_t> bytes) {
++  std::uint32_t crc=0xffffffff;
++  const auto feed=[&](std::uint8_t byte) {
++    crc^=byte;
++    for(int bit=0;bit<8;++bit) crc=(crc>>1)^((crc&1)?0xedb88320:0);
++  };
++  feed(prefix); for(auto byte:bytes) feed(byte); return ~crc;
++}
++
++int main() {
++  try {
++    const auto identity=vds::win::usbip::device_descriptor_with_serial(vds_ds5_usb_device_descriptor);
++    check(identity.size()==18 && identity[16]==3,"USB serial descriptor index");
++    for(unsigned i=0;i<18;++i) if(i!=16) check(identity[i]==vds_ds5_usb_device_descriptor[i],"device identity changed outside serial index");
++    check(vds::win::usbip::stable_virtual_serial(0)!=vds::win::usbip::stable_virtual_serial(1),"port serial collision");
++    for(const auto size : {4u,78u,142u,398u}) for(const bool feature : {false,true}) {
++      std::vector<std::uint8_t> report(size);
++      for(unsigned i=0;i<size-4;++i) report[i]=static_cast<std::uint8_t>(i*37+0x31);
++      const auto crc=reference_crc(feature?0x53:0xa2,std::span(report).first(size-4));
++      if(feature) vds::fill_feature_report_checksum(report); else vds::fill_output_report_checksum(report);
++      for(unsigned byte=0;byte<4;++byte) check(report[size-4+byte]==((crc>>(8*byte))&255),"CRC mismatch");
++    }
++    for(unsigned size=0;size<4;++size) {
++      std::vector<std::uint8_t> report(size,0x5a), before=report;
++      bool rejected=false;
++      try { vds::fill_output_report_checksum(report); } catch(const std::invalid_argument&) { rejected=true; }
++      check(rejected && report==before,"short CRC output not rejected safely");
++    }
++    for(unsigned size=0;size<79;++size) {
++      std::vector<std::uint8_t> packet(size,0);
++      if(size>0) packet[0]=0xa1;
++      if(size>1) packet[1]=0x31;
++      if(size>2) packet[2]=0x01;
++      check(!vds::bt_input_to_usb_input(packet),"truncated input accepted");
++    }
++    std::vector<std::uint8_t> packet(79,0);
++    packet[0]=0xa1; packet[1]=0x31; packet[2]=1;
++    packet[3]=0x12; packet[65]=0x34;
++    const auto checksum=[&]{auto crc=reference_crc(0xa1,std::span(packet).subspan(1,packet.size()-5));for(unsigned i=0;i<4;++i)packet[packet.size()-4+i]=static_cast<std::uint8_t>(crc>>(8*i));};
++    checksum();
++    const auto input=vds::bt_input_to_usb_input(packet);
++    check(input && (*input)[0]==1 && (*input)[1]==0x12 && (*input)[63]==0x34,"input translation offsets");
++    packet[40]^=1;check(!vds::bt_input_to_usb_input(packet),"bad input CRC accepted");packet[40]^=1;
++    packet[2]=2;
++    checksum();
++    check(!vds::bt_input_to_usb_input(packet),"microphone interpreted as controls");
++    check(vds::bt_mic_opus_payload(packet).has_value(),"microphone payload missing");
++    packet[40]^=1;check(!vds::bt_mic_opus_payload(packet),"bad microphone CRC accepted");packet[40]^=1;
++    packet.resize(74);
++    check(!vds::bt_mic_opus_payload(packet),"truncated microphone accepted");
++    std::cout << "protocol boundary tests passed\n"; return 0;
++  } catch(const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
++}
+diff --git a/vcpkg.json b/vcpkg.json
+index 8c3ab1e..042b5bc 100644
+--- a/vcpkg.json
++++ b/vcpkg.json
+@@ -1,4 +1,4 @@
+ {
+-  "dependencies": ["opus"],
++  "dependencies": ["opus", "nlohmann-json"],
+   "builtin-baseline": "cd61e1e26a038e82d6550a3ebbe0fbbfe7da78e3"
+ }

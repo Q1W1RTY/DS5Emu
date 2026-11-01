@@ -1,0 +1,13 @@
+/artifacts/
+/.tools/
+**/bin/
+**/obj/
+.vs/
+# Local development history and hardware reports are not part of the public repo.
+/docs/qa/
+/docs/STATUS.md
+/docs/DEVELOPMENT_PLAN_RU.md
+/docs/ORIGINAL_PLAN_RU.txt
+/docs/design/UI.md
+/docs/releases/SETUP.md
+/scripts/restore-before-latency.ps1

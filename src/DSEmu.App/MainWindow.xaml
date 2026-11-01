@@ -1,0 +1,175 @@
+<Window x:Class="DSEmu.MainWindow" x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DSEmu · DualSense" Icon="Assets/DSEmu.ico" Width="760" Height="520" MinWidth="720" MinHeight="520"
+        WindowStartupLocation="CenterScreen" Background="#141518" Foreground="#F0F1F3"
+        FontFamily="Segoe UI" FontSize="13" ResizeMode="CanResize">
+    <Window.Resources>
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="7"/>
+            <Setter Property="Template"><Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="True">
+                        <Track.DecreaseRepeatButton><RepeatButton x:Name="PageBefore" Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False"/></Track.DecreaseRepeatButton>
+                        <Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="#424751" CornerRadius="3" Margin="1"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                        <Track.IncreaseRepeatButton><RepeatButton x:Name="PageAfter" Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False"/></Track.IncreaseRepeatButton>
+                    </Track>
+                    <ControlTemplate.Triggers><Trigger Property="Orientation" Value="Horizontal">
+                        <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
+                        <Setter TargetName="PageBefore" Property="Command" Value="ScrollBar.PageLeftCommand"/>
+                        <Setter TargetName="PageAfter" Property="Command" Value="ScrollBar.PageRightCommand"/>
+                    </Trigger></ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value></Setter>
+            <Style.Triggers><Trigger Property="Orientation" Value="Horizontal"><Setter Property="Width" Value="Auto"/><Setter Property="Height" Value="7"/></Trigger></Style.Triggers>
+        </Style>
+        <SolidColorBrush x:Key="Muted" Color="#969BA5"/>
+        <SolidColorBrush x:Key="Accent" Color="#A9D8C3"/>
+        <Style TargetType="TextBlock"><Setter Property="VerticalAlignment" Value="Center"/></Style>
+        <Style x:Key="Eyebrow" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10"/><Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="#1D1F23"/><Setter Property="BorderBrush" Value="#2D3036"/>
+            <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="22"/>
+        </Style>
+        <Style TargetType="Button" x:Key="ButtonBase">
+            <Setter Property="Background" Value="#272A30"/><Setter Property="Foreground" Value="#E9ECF1"/>
+            <Setter Property="BorderBrush" Value="#3A3E46"/><Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,9"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template"><Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.83"/></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.65"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.4"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value></Setter>
+        </Style>
+        <Style TargetType="Button" BasedOn="{StaticResource ButtonBase}"/>
+        <Style TargetType="Button" x:Key="PrimaryButton" BasedOn="{StaticResource ButtonBase}">
+            <Setter Property="Background" Value="#EBEEF3"/><Setter Property="Foreground" Value="#181A1E"/>
+            <Setter Property="BorderBrush" Value="#EBEEF3"/>
+        </Style>
+        <Style TargetType="Button" x:Key="QuietButton" BasedOn="{StaticResource ButtonBase}">
+            <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="2,4"/>
+            <Setter Property="FontSize" Value="11"/><Setter Property="FontWeight" Value="Normal"/>
+        </Style>
+        <Style TargetType="CheckBox" x:Key="Switch">
+            <Setter Property="Foreground" Value="#D9DCE2"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template"><Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <ContentPresenter VerticalAlignment="Center"/>
+                        <Border x:Name="Track" Grid.Column="1" Width="32" Height="18" CornerRadius="9" Background="#40444D" Margin="14,0,0,0" BorderThickness="1" BorderBrush="Transparent">
+                            <Ellipse x:Name="Thumb" Width="10" Height="10" Fill="#ECEEF2" HorizontalAlignment="Left" Margin="3,0,0,0"/>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{StaticResource Accent}"/>
+                            <Setter TargetName="Thumb" Property="Fill" Value="#1A2922"/>
+                            <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                            <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Track" Property="BorderBrush" Value="#F0F1F3"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value></Setter>
+        </Style>
+    </Window.Resources>
+    <DockPanel Margin="24">
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,18">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel><TextBlock Text="DSEmu" FontSize="24" FontWeight="SemiBold"/>
+                <TextBlock Text="Ваш DualSense. Без проводов." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,2,0,0"/>
+            </StackPanel>
+            <Border Grid.Column="1" Background="#202825" BorderBrush="#34463E" BorderThickness="1" CornerRadius="12" Padding="10,5" VerticalAlignment="Center" x:Name="StatusBadge">
+                <StackPanel Orientation="Horizontal"><Ellipse x:Name="StatusDot" Width="5" Height="5" Fill="{StaticResource Accent}" Margin="0,0,7,0"/>
+                    <TextBlock x:Name="BadgeText" Text="Ожидание" Foreground="{StaticResource Accent}" FontSize="11"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+        <Grid DockPanel.Dock="Bottom" Margin="0,12,0,0">
+            <Button x:Name="AdvancedButton" Content="Дополнительно  ›" Style="{StaticResource QuietButton}" HorizontalAlignment="Right" Click="ToggleAdvanced" ToolTip="Диагностика · F12"/>
+        </Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False">
+            <StackPanel>
+                <Grid Height="316">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <StackPanel Grid.Row="1" Orientation="Horizontal">
+                                <TextBlock x:Name="BatteryText" Text="—" FontSize="46" FontWeight="Light"/>
+                            </StackPanel>
+                            <Grid Grid.Row="2" Height="4" Margin="0,12,0,0" ToolTip="Приблизительный уровень по данным контроллера">
+                                <Border Background="#33373E" CornerRadius="2"/>
+                                <Grid x:Name="BatteryTrack"><Grid.ColumnDefinitions><ColumnDefinition x:Name="BatteryFilled" Width="0*"/><ColumnDefinition x:Name="BatteryEmpty" Width="100*"/></Grid.ColumnDefinitions>
+                                    <Border x:Name="BatteryFill" Background="{StaticResource Accent}" CornerRadius="2"/>
+                                </Grid>
+                            </Grid>
+                            <StackPanel Grid.Row="4">
+                                <Border Height="1" Background="#30333A" Margin="0,0,0,13"/>
+                                <Grid Height="34"><TextBlock Text="Статус" Foreground="{StaticResource Muted}"/><TextBlock x:Name="StatusText" Text="Ожидание" HorizontalAlignment="Right" FontWeight="Medium"/></Grid>
+                                <Grid Height="34"><TextBlock Text="Подключение" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ConnectionText" Text="—" HorizontalAlignment="Right" FontWeight="Medium"/></Grid>
+                                <Grid Height="34" ToolTip="Windows не сообщает достоверный RSSI. Частота пакетов и паузы доступны в диагностике."><TextBlock Text="Сигнал" Foreground="{StaticResource Muted}"/><TextBlock x:Name="SignalText" Text="Нет данных" HorizontalAlignment="Right" FontWeight="Medium"/></Grid>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <StackPanel>
+                                <Button x:Name="ToggleButton" Content="Включить эмуляцию PS5" Style="{StaticResource PrimaryButton}" Height="42" Click="ToggleBridge"/>
+                                <Button x:Name="ReconnectButton" Content="Переподключить" Height="36" Margin="0,8,0,0" Click="ReconnectBridge"/>
+                                <Button x:Name="DisconnectButton" Content="Отключить геймпад" Height="36" Margin="0,8,0,0" Background="#292326" BorderBrush="#493C40" Foreground="#E1C6CD" Click="DisconnectController" ToolTip="Разорвать Bluetooth-соединение только с DualSense. Сопряжение сохраняется."/>
+                            </StackPanel>
+                            <TextBlock Grid.Row="2" x:Name="ControlDetail" Foreground="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="42" VerticalAlignment="Bottom" Margin="0,0,0,12"/>
+                            <StackPanel Grid.Row="3">
+                                <Border Height="1" Background="#30333A" Margin="0,0,0,16"/>
+                                <CheckBox x:Name="StartupSwitch" Content="Запускать с Windows" Style="{StaticResource Switch}" FontSize="12"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <Border x:Name="DiagnosticsPanel" Visibility="Collapsed" Style="{StaticResource Card}" Margin="0,14,0,0">
+                    <StackPanel>
+                        <Grid><TextBlock Text="Диагностика" FontSize="16" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="DiagnosticsUpdated" Foreground="{StaticResource Muted}" FontSize="10" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <TextBlock Text="Метрики за последнюю минуту. Это не пинг и не процент потерь." FontSize="11" Foreground="{StaticResource Muted}" Margin="0,5,0,14"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <StackPanel x:Name="ConnectionMetrics"/>
+                            <StackPanel Grid.Column="2" x:Name="AudioMetrics"/>
+                        </Grid>
+                        <TextBlock x:Name="DiagnosticError" Foreground="#E9B4A8" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
+                        <TextBlock Text="ПОСЛЕДНИЕ СОБЫТИЯ" Style="{StaticResource Eyebrow}" Margin="0,14,0,8"/>
+                        <TextBox x:Name="LogText" Height="110" IsReadOnly="True" Text="Откройте диагностику для загрузки событий." FontFamily="Consolas" FontSize="10"
+                                 Background="#15171B" Foreground="#AEB6C3" BorderThickness="0" Padding="10" TextWrapping="NoWrap"
+                                 HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
+                        <Grid Margin="0,14,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Button x:Name="ExportButton" Content="Сохранить ZIP" Click="SaveDiagnostics" FontSize="11"/>
+                            <Button Grid.Column="1" Content="Открыть папку" Click="OpenDiagnosticsFolder" FontSize="11" Margin="8,0,0,0"/>
+                            <Button Grid.Column="3" Content="Выход" Click="ExitApplication" Style="{StaticResource QuietButton}"/>
+                        </Grid>
+                        <TextBlock x:Name="DiagnosticsNotice" FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

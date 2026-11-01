@@ -1,0 +1,4 @@
+* text=auto
+*.patch text eol=lf whitespace=-blank-at-eol
+*.png binary
+*.ico binary

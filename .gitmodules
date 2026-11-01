@@ -1,0 +1,3 @@
+[submodule "engine/vds"]
+	path = engine/vds
+	url = https://github.com/hurryman2212/vds.git
