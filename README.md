@@ -1,12 +1,12 @@
-<img src="assets/brand/DSEmu.png" width="72" alt="DSEmu">
+<img src="assets/brand/DSEmu.png" width="72" alt="DS5Emu">
 
-# DSEmu
+# DS5Emu
 
-Полноценный DualSense по Bluetooth на Windows: игра видит виртуальный USB-контроллер PS5, а DSEmu передаёт эффекты и звук на настоящий геймпад.
+Полноценный DualSense по Bluetooth на Windows: игра видит виртуальный USB-контроллер PS5, а DS5Emu передаёт эффекты и звук на настоящий геймпад.
 
-**[Скачать установщик](https://github.com/Q1W1RTY/DSEmu/releases/latest)** · [Инструкция](docs/user/INSTALL.md)
+**[Скачать установщик](https://github.com/Q1W1RTY/DS5Emu/releases/latest)** · [Инструкция](docs/user/INSTALL.md)
 
-![Интерфейс DSEmu](docs/design/main.png)
+![Интерфейс DS5Emu](docs/design/main.png)
 
 ## Возможности
 
@@ -18,17 +18,17 @@
 
 ## Установка
 
-1. Скачать и запустить **DSEmu-Setup.exe** из [Releases](https://github.com/Q1W1RTY/DSEmu/releases/latest).
+1. Скачать и запустить **DS5Emu-Setup.exe** из [Releases](https://github.com/Q1W1RTY/DS5Emu/releases/latest).
 2. Подтвердить установку. Нужные библиотеки и установщики драйверов уже внутри. Если потребуется, перезагрузить ПК.
 3. Сопрячь DualSense с Windows по Bluetooth: удерживать **Create + PS** до мигания, затем добавить устройство в параметрах Windows.
-4. Открыть DSEmu и включить эмуляцию PS5.
+4. Открыть DS5Emu и включить эмуляцию PS5.
 
 Нужны **Windows 11 x64**, Bluetooth и один обычный DualSense. Для установки требуются права администратора.
 
 ## Что учитывать
 
 - Для нативных эффектов нужна игра с поддержкой DualSense на ПК. Если мешает Steam Input, отключить его для этой игры.
-- DSX и другие программы эмуляции на время работы DSEmu нужно закрыть.
+- DSX и другие программы эмуляции на время работы DS5Emu нужно закрыть.
 - Windows может переключить основной звук или микрофон на DualSense. При необходимости вернуть привычное устройство в настройках звука.
 - Это ранняя версия. Работа проверена на основном ПК и в Returnal; совместимость со всеми адаптерами и играми не гарантируется. DualSense Edge пока не поддерживается.
 - Установщик пока не подписан сертификатом издателя. Драйверы используют собственные подписанные установщики.

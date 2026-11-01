@@ -3,14 +3,14 @@
 Нужны Windows 11 x64, Git, Visual Studio 2022 Build Tools (C++ x64, CMake, Ninja, Windows SDK) и .NET SDK из global.json. Использованные версии: MSVC 14.44, SDK 10.0.26100, .NET SDK 10.0.403.
 
 ```powershell
-git clone --recurse-submodules https://github.com/Q1W1RTY/DSEmu.git
-cd DSEmu
+git clone --recurse-submodules https://github.com/Q1W1RTY/DS5Emu.git
+cd DS5Emu
 .\scripts\prepare-engine.ps1
 .\scripts\build.ps1
 .\scripts\test.ps1
 ```
 
-Движок закреплён на upstream-коммите через submodule. Изменения DSEmu применяются из patches/vds/0001-dsemu-bootstrap.patch. Экспериментальное уменьшение аудиобуфера в этот патч не входит.
+Движок закреплён на upstream-коммите через submodule. Изменения DS5Emu применяются из patches/vds/0001-dsemu-bootstrap.patch. Экспериментальное уменьшение аудиобуфера в этот патч не входит.
 
 Native-сборка: artifacts/native-Release. Интерфейс: src/DSEmu.App/bin/Release. Сборка и тесты не устанавливают службу или драйверы.
 

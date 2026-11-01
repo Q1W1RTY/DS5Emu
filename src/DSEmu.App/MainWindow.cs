@@ -49,7 +49,7 @@ internal sealed partial class MainWindow:Window {
   if(preview){Display(new());return;}
   StartupSwitch.IsChecked=Settings.AutoStart;
   StartupSwitch.Checked+=(_,_)=>ChangeStartup(true);StartupSwitch.Unchecked+=(_,_)=>ChangeStartup(false);
-  tray=new Forms.NotifyIcon{Visible=true,Icon=MakeIcon("Waiting"),Text="DSEmu · ожидание"};
+  tray=new Forms.NotifyIcon{Visible=true,Icon=MakeIcon("Waiting"),Text="DS5Emu · ожидание"};
   tray.DoubleClick+=(_,_)=>Open();
   var menu=new Forms.ContextMenuStrip();
   menu.Items.Add("Открыть окно",null,(_,_)=>Open());
@@ -100,11 +100,11 @@ internal sealed partial class MainWindow:Window {
   DiagnosticError.Text=Diagnostics.Mask(state.Error);DiagnosticError.Visibility=string.IsNullOrEmpty(state.Error)?Visibility.Collapsed:Visibility.Visible;
   if(state.LogLines.Length>0){diagnosticLines=state.LogLines;var text=string.Join(Environment.NewLine,state.LogLines.Select(Diagnostics.Mask));if(LogText.Text!=text){LogText.Text=text;LogText.ScrollToEnd();}DiagnosticsUpdated.Text="Обновлено "+DateTime.Now.ToString("HH:mm:ss");}
   if(tray!=null){
-   tray.Text="DSEmu · "+name+(state.BatteryPercent is int b?$" · ≈{b}%":"");
+   tray.Text="DS5Emu · "+name+(state.BatteryPercent is int b?$" · ≈{b}%":"");
    if(trayState!=state.State){var old=tray.Icon;tray.Icon=MakeIcon(state.State);old?.Dispose();trayState=state.State;}
    if(state.BatteryPercent is >30 || state.Charging)lowBatteryNotified=false;
    if(state.BatteryPercent is <=20 && !state.Charging && !lowBatteryNotified){lowBatteryNotified=true;Notify("Низкий заряд DualSense",$"Осталось приблизительно {state.BatteryPercent}%.");}
-   if(state.State=="Error" && state.Error!=notifiedError){notifiedError=state.Error;Notify("DSEmu",ControlDetail.Text);}
+   if(state.State=="Error" && state.Error!=notifiedError){notifiedError=state.Error;Notify("DS5Emu",ControlDetail.Text);}
   }
  }
  internal void SetDiagnosticsOpen(bool open){
@@ -145,7 +145,7 @@ internal sealed partial class MainWindow:Window {
  [System.Runtime.InteropServices.DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr hwnd,int attribute,ref int value,int size);
  internal void Open(){Show();WindowState=WindowState.Normal;Activate();}
  void Notify(string title,string text){if(tray!=null){tray.BalloonTipTitle=title;tray.BalloonTipText=text.Length>240?text[..240]:text;tray.ShowBalloonTip(5000);}}
- void Notice(string text){DiagnosticsNotice.Text=text;DiagnosticsNotice.Visibility=Visibility.Visible;if(!IsVisible||!diagnosticsOpen)Notify("DSEmu",text);else Dispatcher.BeginInvoke(new Action(()=>DiagnosticsNotice.BringIntoView()),DispatcherPriority.Background);}
+ void Notice(string text){DiagnosticsNotice.Text=text;DiagnosticsNotice.Visibility=Visibility.Visible;if(!IsVisible||!diagnosticsOpen)Notify("DS5Emu",text);else Dispatcher.BeginInvoke(new Action(()=>DiagnosticsNotice.BringIntoView()),DispatcherPriority.Background);}
  async Task Initialize(){await Command("enable");timer.Start();}
  async Task Refresh(){
   if(updating||exiting||commanding)return;updating=true;var generation=stateGeneration;
@@ -154,7 +154,7 @@ internal sealed partial class MainWindow:Window {
    var state=await BridgeClient.SendAsync(diagnostics?"getDiagnostics":"getState");
    if(diagnostics)lastDiagnostics=DateTime.UtcNow;
    if(generation==stateGeneration && !commanding)Display(state);
-  }catch(Exception){if(generation==stateGeneration && !commanding)Display(current with {State="Error",Error="Нет связи со службой. Проверьте установку DSEmu.",BatteryPercent=null,Charging=false,Rssi=null,AudioActive=false,MicrophoneActive=false,Headphones=false,PacketsPerSecond=0,GapsOver10ms=0,MaxGapMs=0,ObservedSeconds=0});}
+  }catch(Exception){if(generation==stateGeneration && !commanding)Display(current with {State="Error",Error="Нет связи со службой. Проверьте установку DS5Emu.",BatteryPercent=null,Charging=false,Rssi=null,AudioActive=false,MicrophoneActive=false,Headphones=false,PacketsPerSecond=0,GapsOver10ms=0,MaxGapMs=0,ObservedSeconds=0});}
   finally{updating=false;}
  }
  async Task Command(string command){
@@ -176,7 +176,7 @@ internal sealed partial class MainWindow:Window {
   try{
    BridgeState state;try{state=await BridgeClient.SendAsync("getDiagnostics");}catch(Exception){state=current with {Error="Служба недоступна при экспорте диагностики. "+current.Error,LogLines=diagnosticLines};}
    var folder=Path.Combine(Settings.DirectoryPath,"Diagnostics");Directory.CreateDirectory(folder);
-   var path=Path.Combine(folder,"DSEmu-"+DateTime.Now.ToString("yyyyMMdd-HHmmss-fff")+".zip");
+   var path=Path.Combine(folder,"DS5Emu-"+DateTime.Now.ToString("yyyyMMdd-HHmmss-fff")+".zip");
    using(var zip=ZipFile.Open(path,ZipArchiveMode.Create)){
     var entry=zip.CreateEntry("status.json");using var writer=new StreamWriter(entry.Open());
     var sanitized=state with {Error=Diagnostics.Mask(state.Error),LogLines=state.LogLines.Select(Diagnostics.Mask).ToArray()};

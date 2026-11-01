@@ -17,7 +17,7 @@ internal static class App {
    bool advanced=Array.IndexOf(args,"--advanced")>=0;
    bool disconnected=Array.IndexOf(args,"--disconnected")>=0;
    string state=Array.IndexOf(args,"--paused")>=0||disconnected?"Paused":Array.IndexOf(args,"--error")>=0?"Error":"Active";
-   preview.Display(new BridgeState {State=state,Enabled=state!="Paused",BluetoothDisconnected=disconnected,BatteryPercent=state=="Active"?85:null,PacketsPerSecond=state=="Active"?598.4:0,GapsOver10ms=8,MaxGapMs=15.2,ObservedSeconds=60,AudioActive=true,Error=state=="Error"?"Нет связи со службой. Проверьте установку DSEmu.":"",LogLines=new[]{"[предпросмотр] Служба подключена · JSONL v1","[предпросмотр] Ввод контроллера поступает","[предпросмотр] Виртуальное USB-устройство активно"}});
+   preview.Display(new BridgeState {State=state,Enabled=state!="Paused",BluetoothDisconnected=disconnected,BatteryPercent=state=="Active"?85:null,PacketsPerSecond=state=="Active"?598.4:0,GapsOver10ms=8,MaxGapMs=15.2,ObservedSeconds=60,AudioActive=true,Error=state=="Error"?"Нет связи со службой. Проверьте установку DS5Emu.":"",LogLines=new[]{"[предпросмотр] Служба подключена · JSONL v1","[предпросмотр] Ввод контроллера поступает","[предпросмотр] Виртуальное USB-устройство активно"}});
    preview.SetDiagnosticsOpen(advanced);
    int width=Array.IndexOf(args,"--narrow")>=0?704:744,height=advanced?860:480;
    var content=(FrameworkElement)preview.Content;content.Measure(new Size(width,height));content.Arrange(new Rect(0,0,width,height));content.UpdateLayout();

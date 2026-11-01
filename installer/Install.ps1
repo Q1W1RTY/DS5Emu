@@ -84,7 +84,7 @@ try{
    if($serviceProcess -and !$serviceProcess.WaitForExit(15000)){throw 'Service process did not release its files'}
   }finally{if($serviceProcess){$serviceProcess.Dispose()}}
  }
- foreach($uiProcess in @(Get-Process DSEmu -ErrorAction SilentlyContinue | Where-Object {$_.Path -and $_.Path.StartsWith($install+'\',[StringComparison]::OrdinalIgnoreCase)})){
+ foreach($uiProcess in @(Get-Process DSEmu,DS5Emu -ErrorAction SilentlyContinue | Where-Object {$_.Path -and $_.Path.StartsWith($install+'\',[StringComparison]::OrdinalIgnoreCase)})){
   try{Stop-Process -InputObject $uiProcess -Force;if(!$uiProcess.WaitForExit(15000)){throw 'UI process did not release its files'}}finally{$uiProcess.Dispose()}
  }
  if($wasInstalled){Move-OwnedDirectory $install $backup}
@@ -95,9 +95,9 @@ try{
  # Use structured CIM arguments: Windows PowerShell 5 loses embedded quotes
  # when a quoted executable path is forwarded through sc.exe arguments.
  if($existing){
-  $registered=Invoke-CimMethod -InputObject $existing -MethodName Change -Arguments @{PathName=$binary;StartMode='Automatic';DisplayName='DSEmu DualSense Bridge'}
+  $registered=Invoke-CimMethod -InputObject $existing -MethodName Change -Arguments @{PathName=$binary;StartMode='Automatic';DisplayName='DS5Emu'}
  }else{
-  $registered=Invoke-CimMethod -ClassName Win32_Service -MethodName Create -Arguments @{Name=$serviceName;DisplayName='DSEmu DualSense Bridge';PathName=$binary;ServiceType=[byte]16;ErrorControl=[byte]1;StartMode='Automatic';DesktopInteract=$false;StartName='LocalSystem'}
+  $registered=Invoke-CimMethod -ClassName Win32_Service -MethodName Create -Arguments @{Name=$serviceName;DisplayName='DS5Emu';PathName=$binary;ServiceType=[byte]16;ErrorControl=[byte]1;StartMode='Automatic';DesktopInteract=$false;StartName='LocalSystem'}
  }
  if($registered.ReturnValue -ne 0){throw "Cannot register the DSEmu service: $($registered.ReturnValue)"}
  & sc.exe description $serviceName 'Local DualSense Bluetooth to virtual USB bridge' | Out-Null
@@ -122,13 +122,26 @@ try{
  $uninstallKey='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu'
  $uninstallNative=[Microsoft.Win32.Registry]::LocalMachine.CreateSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu',$true)
  try{
-  $uninstallNative.SetValue('DisplayName','DSEmu');$uninstallNative.SetValue('DisplayVersion','0.1.0');$uninstallNative.SetValue('InstallLocation',$install)
-  $uninstallNative.SetValue('DisplayIcon',(Join-Path $install 'DSEmu.exe')+',0')
+  $uninstallNative.SetValue('DisplayName','DS5Emu');$uninstallNative.SetValue('DisplayVersion','0.1.1');$uninstallNative.SetValue('InstallLocation',$install)
+  $uninstallNative.SetValue('DisplayIcon',(Join-Path $install 'DS5Emu.exe')+',0')
   $uninstallNative.SetValue('UninstallString',('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $install 'Uninstall.ps1')+'"'))
  }finally{$uninstallNative.Close()}
  $shell=New-Object -ComObject WScript.Shell
- $shortcut=$shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'DSEmu.lnk'))
- $shortcut.TargetPath=Join-Path $install 'DSEmu.exe';$shortcut.IconLocation=(Join-Path $install 'DSEmu.exe')+',0';$shortcut.WorkingDirectory=$install;$shortcut.Save()
+ $shortcut=$shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'DS5Emu.lnk'))
+ $shortcut.TargetPath=Join-Path $install 'DS5Emu.exe';$shortcut.IconLocation=(Join-Path $install 'DS5Emu.exe')+',0';$shortcut.WorkingDirectory=$install;$shortcut.Save()
+ # Keep the existing installation/data identities, updating only the UI target.
+ $oldShortcut=Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'DSEmu.lnk'
+ if(Test-Path -LiteralPath $oldShortcut){
+  $old=$shell.CreateShortcut($oldShortcut)
+  if($old.TargetPath -eq (Join-Path $install 'DSEmu.exe')){Remove-Item -LiteralPath $oldShortcut}
+ }
+ $run='Registry::HKEY_USERS\'+$OwnerSid+'\Software\Microsoft\Windows\CurrentVersion\Run'
+ if(Test-Path $run){
+  $startup=(Get-ItemProperty $run -Name DSEmu -ErrorAction SilentlyContinue).DSEmu
+  if($startup -and $startup.StartsWith(('"'+(Join-Path $install 'DSEmu.exe')+'"'),[StringComparison]::OrdinalIgnoreCase)){
+   Set-ItemProperty $run -Name DSEmu -Value ('"'+(Join-Path $install 'DS5Emu.exe')+'" --background')
+  }
+ }
  if($wasInstalled){Write-Host "Previous application files retained for rollback: $backup"}
  Write-Host 'DSEmu installed. The bridge starts paused until enabled from the app.'
 }catch{

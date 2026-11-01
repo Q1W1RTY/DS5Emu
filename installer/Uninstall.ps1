@@ -13,7 +13,7 @@ if($service){
   if($serviceProcess -and !$serviceProcess.WaitForExit(15000)){throw 'Service process did not release its files'}
  }finally{if($serviceProcess){$serviceProcess.Dispose()}}
 }
-foreach($uiProcess in @(Get-Process DSEmu -ErrorAction SilentlyContinue | Where-Object {$_.Path -and $_.Path.StartsWith($install+'\',[StringComparison]::OrdinalIgnoreCase)})){
+foreach($uiProcess in @(Get-Process DSEmu,DS5Emu -ErrorAction SilentlyContinue | Where-Object {$_.Path -and $_.Path.StartsWith($install+'\',[StringComparison]::OrdinalIgnoreCase)})){
  try{Stop-Process -InputObject $uiProcess -Force;if(!$uiProcess.WaitForExit(15000)){throw 'UI process did not release its files'}}finally{$uiProcess.Dispose()}
 }
 $env:VDS_HIDHIDE_CLI=$null
@@ -23,6 +23,7 @@ if($service){$service.Dispose();& sc.exe delete DSEmuBridge | Out-Null;if($LASTE
 $owner=(Get-ItemProperty 'HKLM:\SOFTWARE\DSEmu' -Name OwnerSid -ErrorAction SilentlyContinue).OwnerSid
 if($owner){$run='Registry::HKEY_USERS\'+$owner+'\Software\Microsoft\Windows\CurrentVersion\Run';if(Test-Path $run){Remove-ItemProperty $run -Name DSEmu -ErrorAction SilentlyContinue}}
 $shortcut=Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'DSEmu.lnk';if(Test-Path $shortcut){Remove-Item -LiteralPath $shortcut}
+$shortcut=Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'DS5Emu.lnk';if(Test-Path $shortcut){Remove-Item -LiteralPath $shortcut}
 # Fixed application-owned roots are checked before recursive deletion. Shared drivers stay installed.
 $resolved=[IO.Path]::GetFullPath($install)
 if($resolved -ne ([IO.Path]::GetFullPath((Join-Path $env:ProgramFiles 'DSEmu')))){throw 'Unexpected uninstall root'}

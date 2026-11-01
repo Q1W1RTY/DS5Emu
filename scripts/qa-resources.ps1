@@ -7,7 +7,7 @@ do {
  $now=[DateTime]::UtcNow;$elapsed=($now-$last).TotalSeconds;$totalCpu=0;$working=0;$privateBytes=0;$privateWorking=0
  # CIM exposes service CPU counters to the ordinary user as well. Get-Process
  # TotalProcessorTime can be null for LocalSystem, silently undercounting CPU.
- $processes=@(Get-CimInstance Win32_Process -Filter "Name='DSEmu.exe' OR Name='vdsd.exe'")
+ $processes=@(Get-CimInstance Win32_Process -Filter "Name='DSEmu.exe' OR Name='DS5Emu.exe' OR Name='vdsd.exe'")
  foreach($process in $processes){
   $cpu=([double]$process.UserModeTime+[double]$process.KernelModeTime)/10000000
   $key=[string]$process.ProcessId+'|'+$process.CreationDate.ToString('o')

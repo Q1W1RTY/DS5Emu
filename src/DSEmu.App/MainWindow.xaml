@@ -1,7 +1,7 @@
 <Window x:Class="DSEmu.MainWindow" x:ClassModifier="internal"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="DSEmu · DualSense" Icon="Assets/DSEmu.ico" Width="760" Height="520" MinWidth="720" MinHeight="520"
+        Title="DS5Emu · DualSense" Icon="Assets/DSEmu.ico" Width="760" Height="520" MinWidth="720" MinHeight="520"
         WindowStartupLocation="CenterScreen" Background="#141518" Foreground="#F0F1F3"
         FontFamily="Segoe UI" FontSize="13" ResizeMode="CanResize">
     <Window.Resources>
@@ -93,7 +93,7 @@
     <DockPanel Margin="24">
         <Grid DockPanel.Dock="Top" Margin="0,0,0,18">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <StackPanel><TextBlock Text="DSEmu" FontSize="24" FontWeight="SemiBold"/>
+            <StackPanel><TextBlock Text="DS5Emu" FontSize="24" FontWeight="SemiBold"/>
                 <TextBlock Text="Ваш DualSense. Без проводов." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,2,0,0"/>
             </StackPanel>
             <Border Grid.Column="1" Background="#202825" BorderBrush="#34463E" BorderThickness="1" CornerRadius="12" Padding="10,5" VerticalAlignment="Center" x:Name="StatusBadge">
