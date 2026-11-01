@@ -8,8 +8,15 @@ if (!(Test-Path (Join-Path $engine 'CMakeLists.txt'))) {
 }
 $revision=git -C $engine rev-parse HEAD
 if ($revision -ne 'ec531599dfdd02e14ce68efd8c0d2dcb439894a5') {throw 'Unexpected vDS revision'}
-git -C $engine apply --reverse --check $patch 2>$null
-if ($LASTEXITCODE -eq 0) {return}
+# A failed reverse check is expected on a clean checkout. Windows PowerShell 5
+# promotes redirected native stderr to terminating errors with Stop enabled.
+$previousErrorAction=$ErrorActionPreference
+try {
+    $ErrorActionPreference='Continue'
+    git -C $engine apply --reverse --check $patch 2>$null
+    $alreadyApplied=$LASTEXITCODE -eq 0
+} finally {$ErrorActionPreference=$previousErrorAction}
+if ($alreadyApplied) {return}
 git -C $engine apply --check $patch
 if ($LASTEXITCODE) {throw 'Patch conflicts with local engine changes; nothing overwritten'}
 git -C $engine apply $patch
