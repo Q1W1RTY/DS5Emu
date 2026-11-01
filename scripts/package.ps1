@@ -5,7 +5,7 @@ $root=Split-Path $PSScriptRoot -Parent
 $native=Join-Path $root 'artifacts\native-Release'
 foreach($file in @('vdsd.exe','vdsctl.exe','opus.dll')){if(!(Test-Path (Join-Path $native $file))){throw 'Build the native engine first'}}
 $stamp=Get-Date -Format yyyyMMdd-HHmmss
-$output=Join-Path $root ('artifacts\packages\DS5Emu-0.1.2-'+$stamp)
+$output=Join-Path $root ('artifacts\packages\DS5Emu-0.1.3-'+$stamp)
 $app=Join-Path $output 'app';New-Item -ItemType Directory $app -Force | Out-Null
 $dotnet=Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
 & $dotnet publish (Join-Path $root 'src\DSEmu.App\DSEmu.App.csproj') -c Release -r win-x64 --self-contained true -p:Platform=AnyCPU -o $app
@@ -36,7 +36,7 @@ $manifest=foreach($item in @(
 $manifest | ConvertTo-Json | Set-Content (Join-Path $output 'dependencies.json') -Encoding utf8
 Copy-Item (Join-Path $root 'docs\STATUS.md') (Join-Path $output 'STATUS.md')
 Copy-Item (Join-Path $root 'docs\user\INSTALL.md') (Join-Path $output 'README-RU.md')
-$buildInfo=[ordered]@{version='0.1.2';builtAt=(Get-Date).ToString('o');upstream=(git -C (Join-Path $root 'engine\vds') rev-parse HEAD);patchSha256=(Get-FileHash (Join-Path $root 'patches\vds\0001-dsemu-bootstrap.patch')).Hash;runtime=(Get-Content (Join-Path $app 'DS5Emu.runtimeconfig.json') -Raw | ConvertFrom-Json)}
+$buildInfo=[ordered]@{version='0.1.3';builtAt=(Get-Date).ToString('o');upstream=(git -C (Join-Path $root 'engine\vds') rev-parse HEAD);patchSha256=(Get-FileHash (Join-Path $root 'patches\vds\0001-dsemu-bootstrap.patch')).Hash;runtime=(Get-Content (Join-Path $app 'DS5Emu.runtimeconfig.json') -Raw | ConvertFrom-Json)}
 $buildInfo | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $output 'build.json') -Encoding utf8
 $hashes=Get-ChildItem $output -File -Recurse | ForEach-Object { '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash,$_.FullName.Substring($output.Length+1) }
 $hashes | Set-Content (Join-Path $output 'files.sha256') -Encoding utf8

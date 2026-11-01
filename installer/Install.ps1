@@ -122,7 +122,7 @@ try{
  $uninstallKey='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu'
  $uninstallNative=[Microsoft.Win32.Registry]::LocalMachine.CreateSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu',$true)
  try{
-  $uninstallNative.SetValue('DisplayName','DS5Emu');$uninstallNative.SetValue('DisplayVersion','0.1.2');$uninstallNative.SetValue('InstallLocation',$install)
+  $uninstallNative.SetValue('DisplayName','DS5Emu');$uninstallNative.SetValue('DisplayVersion','0.1.3');$uninstallNative.SetValue('InstallLocation',$install)
   $uninstallNative.SetValue('DisplayIcon',(Join-Path $install 'DS5Emu.exe')+',0')
   $uninstallNative.SetValue('UninstallString',('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $install 'Uninstall.ps1')+'"'))
  }finally{$uninstallNative.Close()}
