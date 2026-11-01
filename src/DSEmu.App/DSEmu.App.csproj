@@ -7,13 +7,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Assets\DSEmu.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\DS5Emu.ico</ApplicationIcon>
     <AssemblyName>DS5Emu</AssemblyName>
     <RootNamespace>DSEmu</RootNamespace>
     <Product>DS5Emu</Product>
     <Title>DS5Emu</Title>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
   </PropertyGroup>
-  <ItemGroup><Resource Include="Assets\DSEmu.ico" /></ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\DS5Emu.ico" />
+    <Resource Include="Assets\DS5Emu.Tray.ico" />
+  </ItemGroup>
 </Project>

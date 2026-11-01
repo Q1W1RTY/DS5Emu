@@ -130,10 +130,10 @@ internal sealed partial class MainWindow:Window {
   if(message=="CONTROLLER_NOT_CONFIGURED")return "Сначала подключите один DualSense по Bluetooth.";
   return Regex.IsMatch(message,"[А-Яа-я]")?message:"Сбой подключения. Подробности в диагностике.";
  }
- static Icon MakeIcon(string state){
+ internal static Icon MakeIcon(string state){
   using var bitmap=new Bitmap(24,24);using(var graphics=Graphics.FromImage(bitmap)){
    graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-   using var stream=Application.GetResourceStream(new Uri("pack://application:,,,/Assets/DSEmu.ico")).Stream;
+   using var stream=Application.GetResourceStream(new Uri("pack://application:,,,/Assets/DS5Emu.Tray.ico")).Stream;
    using var brand=new System.Drawing.Icon(stream,24,24);graphics.DrawIcon(brand,new Rectangle(0,0,24,24));
    var color=state switch{"Active"=>System.Drawing.Color.FromArgb(169,216,195),"Error"=>System.Drawing.Color.FromArgb(233,180,168),"Connecting" or "Stopping"=>System.Drawing.Color.Goldenrod,_=>System.Drawing.Color.SlateGray};
    using var outline=new SolidBrush(System.Drawing.Color.FromArgb(28,33,37));graphics.FillEllipse(outline,15,15,9,9);

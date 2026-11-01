@@ -12,6 +12,14 @@ internal static class App {
  [STAThread]
  public static void Main(string[] args) {
   var app=new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};
+  if(args.Length==2 && args[0]=="--render-icon-preview") {
+   Directory.CreateDirectory(args[1]);
+   foreach(var state in new[]{"Active","Waiting","Error","Connecting"}) {
+    using var icon=MainWindow.MakeIcon(state);using var bitmap=icon.ToBitmap();
+    bitmap.Save(Path.Combine(args[1],state+".png"),System.Drawing.Imaging.ImageFormat.Png);
+   }
+   return;
+  }
   if(args.Length>=2 && args[0]=="--render-preview") {
    var preview=new MainWindow(true);
    bool advanced=Array.IndexOf(args,"--advanced")>=0;

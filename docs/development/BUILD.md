@@ -25,7 +25,7 @@ Native-сборка: artifacts/native-Release. Интерфейс: src/DSEmu.App
 
 EXE-мастер собирается через scripts/build-setup.ps1. У текущего релизного профиля строгая проверка хеша принятого native-бинарника: он рассчитан на сохранённый проверенный пакет 064430, а не на произвольный свежий билд. Для обычной установки использовать готовый EXE из Releases. Не снимать эту проверку для публикации непроверенного движка.
 
-Иконки генерируются scripts/generate-icons.ps1 из assets/brand/IconArtwork.cs. Bootstrap компилируется встроенным в Windows Framework64 csc. Проверка EXE без установки: scripts/qa-setup.ps1 -ReleaseDirectory <каталог релиза>.
+Иконки созданы через image_gen; исходные PNG и запросы находятся в assets/brand. scripts/generate-icons.ps1 упаковывает отдельные изображения приложения и трея в ICO разных размеров, сохраняя прозрачность. Bootstrap компилируется встроенным в Windows Framework64 csc. Проверка EXE без установки: scripts/qa-setup.ps1 -ReleaseDirectory <каталог релиза>.
 
 ## Проверки
 

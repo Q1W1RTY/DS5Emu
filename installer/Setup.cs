@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Установка DS5Emu")]
-[assembly: AssemblyVersion("0.1.1.0")]
+[assembly: AssemblyVersion("0.1.2.0")]
 internal static class Setup {
  internal static string Work;
  internal static string Log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DS5Emu", "Setup", "last-setup.log");

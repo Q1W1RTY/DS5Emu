@@ -1,4 +1,4 @@
-<img src="assets/brand/DSEmu.png" width="72" alt="DS5Emu">
+<img src="assets/brand/DS5Emu.png" width="72" alt="DS5Emu">
 
 # DS5Emu
 
