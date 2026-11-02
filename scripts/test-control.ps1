@@ -50,6 +50,16 @@ try {
     if(Test-Path $database) {
         if((Get-Item $database).Length -gt 0){throw 'Read-only/paused tests captured a controller'}
     }
+    $reply=Request '{"protocolVersion":1,"id":"input-preview","command":"getInputPreview"}'
+    if(!$reply.ok -or $reply.payload.enabled -or $reply.payload.ageMs -ne -1 -or $reply.payload.touches.Count -ne 2){throw 'Read-only preview invented an active controller'}
+    $reply=Request '{"protocolVersion":1,"id":"input-defaults","command":"getState"}'
+    if($reply.payload.inputOptions.leftDeadzone -ne 0 -or $reply.payload.inputOptions.touchEnabled){throw 'Input defaults changed native behavior'}
+    $reply=Request '{"protocolVersion":1,"id":"input-save","command":"setInputOptions","options":{"leftDeadzone":10,"rightDeadzone":15,"touchEnabled":false,"consumeTouchpad":true}}'
+    if(!$reply.ok -or $reply.payload.inputOptions.leftDeadzone -ne 10 -or !(Test-Path ($database+'.input.json'))){throw 'Input settings were not applied and saved'}
+    $reply=Request '{"protocolVersion":1,"id":"input-invalid","command":"setInputOptions","options":{"leftDeadzone":31,"rightDeadzone":0,"touchEnabled":false,"consumeTouchpad":true}}'
+    if($reply.ok){throw 'Out-of-range input settings accepted'}
+    $reply=Request '{"protocolVersion":1,"id":"input-events","command":"getInputEvents","afterSequence":0}'
+    if(!$reply.ok -or $reply.payload.enabled -or !$reply.payload.epoch -or $reply.payload.events.Count -ne 0){throw 'Paused input event stream invalid'}
     Set-Content ($database+'.hidhide-recovery.json') '{"schema":99}'
     $reply=Request '{"protocolVersion":1,"id":"pending-recovery","command":"getState"}'
     if(!$reply.ok -or $reply.payload.state -ne 'Error' -or !$reply.payload.recoveryPending){throw 'Pending recovery was reported as released'}

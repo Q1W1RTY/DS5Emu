@@ -8,10 +8,11 @@ static void Check(bool value,string message){if(!value)throw new Exception(messa
 static async Task TestClient(string scenario) {
  var name="DSEmu.ClientTest."+Guid.NewGuid().ToString("N");
  using var server=new NamedPipeServerStream(name,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous);
- var client=BridgeClient.SendAsync("getState",name);
+ var client=scenario=="options"?BridgeClient.SetInputOptionsAsync(new InputOptions {LeftDeadzone=10},name):BridgeClient.SendAsync("getState",name);
  await server.WaitForConnectionAsync();
  using var reader=new StreamReader(server,Encoding.UTF8,false,1024,true);
  var line=await reader.ReadLineAsync();using var request=JsonDocument.Parse(line!);
+ if(scenario=="options")Check(request.RootElement.GetProperty("options").GetProperty("leftDeadzone").GetInt32()==10,"Input options wire casing is incompatible with native service");
  var id=request.RootElement.GetProperty("id").GetString();
  string response=scenario switch {
   "id"=>JsonSerializer.Serialize(new{protocolVersion=1,id="wrong",ok=true,payload=new{state="Active"}}),
@@ -22,10 +23,10 @@ static async Task TestClient(string scenario) {
  };
  if(scenario=="eof")server.Disconnect();
  else {try{await server.WriteAsync(Encoding.UTF8.GetBytes(response+"\n"));await server.FlushAsync();}catch(IOException)when(scenario=="large") {}}
- try {var state=await client;Check(scenario=="valid" && state.State=="Active" && state.BatteryPercent==75,"Invalid reply was accepted");}
+ try {var state=await client;Check((scenario=="valid" || scenario=="options") && state.State=="Active" && state.BatteryPercent==75,"Invalid reply was accepted");}
  catch(IOException)when(scenario!="valid"){}
 }
-foreach(var scenario in new[]{"valid","id","version","error","large","eof"})await TestClient(scenario);
+foreach(var scenario in new[]{"valid","options","id","version","error","large","eof"})await TestClient(scenario);
 var masked=Diagnostics.Mask("address=12:34:56:78:9a:bc HID\\VID_054C&PID_0CE6\\123456789ABC");
 Check(!masked.Contains("12:34") && !masked.Contains("123456789ABC") && !masked.Contains("VID_054C"),"Private device identity leaked");
 var eventInput=new[]{
@@ -93,4 +94,24 @@ if(args.Length==2 && args[0]=="--diagnostic-smoke") {
  var result=await DiagnosticArchive.SaveAsync(smoke,new BridgeState {State="Error"},()=>BridgeClient.SendAsync("getDiagnostics","DSEmu.NonexistentProbe."+Guid.NewGuid().ToString("N")));
  Console.WriteLine("Live read-only diagnostic collection: "+result.Collected+" collected, "+result.Unavailable+" unavailable; IPC reachable="+result.BridgeReachable);
 }
-Console.WriteLine("29 managed protocol/diagnostic scenarios passed");
+Check(new InputProfile().Valid && !new InputProfile().Options.TouchEnabled && new InputProfile().Options.LeftDeadzone==0,"Input customization must default to native passthrough");
+Check(!new KeyBinding(0x5B,0).Valid && !new KeyBinding(0x41,8).Valid && !new InputProfile {Options=new(){LeftDeadzone=31}}.Valid,"Unsupported keys/modifiers or deadzones accepted");
+Check(!new InputProfile {Options=new(){TouchEnabled=true}}.Valid && new InputProfile {Options=new(){TouchEnabled=true},Bindings=new(){{"tap",new(0x70,2)}}}.Valid,"Empty touch mappings accepted");
+var cursor=new InputEventCursor();
+TouchInputBatch Batch(string epoch,long seq,bool enabled,params TouchInputEvent[] events)=>new(){Epoch=epoch,Sequence=seq,Enabled=enabled,Events=events};
+TouchInputEvent Event(long seq,int age=0)=>new(){Sequence=seq,AgeMs=age,Action="tap"};
+Check(cursor.Read(Batch("a",10,true,Event(10))).Length==0,"Initial input event replayed");
+Check(cursor.Read(Batch("a",13,true,Event(11),Event(11),Event(12,400),Event(13,-1))).Length==1 && cursor.Sequence==13,"Old, duplicate or future events injected");
+Check(cursor.Read(Batch("a",14,false,Event(14))).Length==0 && cursor.Read(Batch("b",1,true,Event(1))).Length==0,"Paused or restarted service replayed input");
+cursor.Reset();Check(cursor.Read(Batch("b",2,true,Event(2))).Length==0 && cursor.Read(Batch("",3,true,Event(3))).Length==0,"Reconnection baseline was not reset");
+Check(!new InputPreview().Fresh && !new InputPreview {Enabled=true,AgeMs=500}.Fresh && !new InputPreview {Enabled=false,AgeMs=0}.Fresh && new InputPreview {Enabled=true,AgeMs=499}.Fresh,"Preview freshness boundaries are incorrect");
+var previewPipe="DSEmu.InputPreview.Test."+Guid.NewGuid().ToString("N");
+using(var server=new NamedPipeServerStream(previewPipe,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous)){
+ var client=BridgeClient.ReadInputPreviewAsync(previewPipe);await server.WaitForConnectionAsync();
+ using var reader=new StreamReader(server,Encoding.UTF8,leaveOpen:true);var request=JsonDocument.Parse((await reader.ReadLineAsync())!);
+ Check(request.RootElement.GetProperty("command").GetString()=="getInputPreview","Preview requested a mutating command");
+ var response=JsonSerializer.Serialize(new {protocolVersion=1,id=request.RootElement.GetProperty("id").GetString(),ok=true,payload=new {enabled=true,ageMs=10,leftX=140,leftY=128,rightX=255,rightY=0,click=true,touches=new[]{new {active=true,x=1000,y=500}}}});
+ await server.WriteAsync(Encoding.UTF8.GetBytes(response+"\n"));await server.FlushAsync();var result=await client;
+ Check(result.Fresh && result.LeftX==140 && result.RightY==0 && result.Click && result.Touches.Single().X==1000,"Preview coordinates were not decoded");
+}
+Console.WriteLine("40 managed protocol/diagnostic/input scenarios passed");

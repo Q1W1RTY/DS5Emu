@@ -25,7 +25,7 @@ internal sealed partial class MainWindow : Window {
     readonly Dictionary<string, TextBlock> metrics = new();
     readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly Forms.NotifyIcon? tray;
-    readonly Forms.ToolStripMenuItem? startupMenu;
+    Forms.ToolStripMenuItem? startupMenu;
     readonly bool preview;
     BridgeState current = new();
     bool updating, commanding, exiting, exitRequested, lowBatteryNotified, diagnosticsOpen, exporting, syncingStartup;
@@ -47,6 +47,7 @@ internal sealed partial class MainWindow : Window {
     public MainWindow(bool preview) {
         this.preview = preview;
         InitializeComponent();
+        InitializeInputControls();
         VersionText.Text = "v" + typeof(MainWindow).Assembly.GetName().Version?.ToString(3);
         MaxHeight = SystemParameters.WorkArea.Height;
 
@@ -95,19 +96,7 @@ internal sealed partial class MainWindow : Window {
         tray = new Forms.NotifyIcon { Visible = true, Icon = MakeIcon("Waiting"), Text = "DS5Emu · ожидание" };
         tray.DoubleClick += (_, _) => Open();
 
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Открыть окно", null, (_, _) => Open());
-        menu.Items.Add("Включить / выключить эмуляцию", null, async (_, _) => await Command(current.Enabled ? "pause" : "enable"));
-        menu.Items.Add("Переподключить", null, async (_, _) => await Command("reconnect"));
-        menu.Items.Add("Отключить геймпад", null, async (_, _) => await Command("disconnect"));
-        startupMenu = new Forms.ToolStripMenuItem("Автозапуск") { Checked = StartupSwitch.IsChecked == true, CheckOnClick = true };
-        startupMenu.CheckedChanged += (_, _) => ChangeStartup(startupMenu.Checked);
-        menu.Items.Add(startupMenu);
-        menu.Items.Add("Диагностика", null, (_, _) => { Open(); SetDiagnosticsOpen(true); });
-        menu.Items.Add("Сохранить диагностику", null, async (_, _) => await ExportDiagnostics());
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Выход", null, async (_, _) => await Exit());
-        tray.ContextMenuStrip = menu;
+        tray.ContextMenuStrip = CreateTrayMenu();
 
         timer.Tick += async (_, _) => await Refresh();
         Display(new());
@@ -445,6 +434,8 @@ internal sealed partial class MainWindow : Window {
     async Task Command(string command) {
         if (commanding || exiting || exitRequested) return;
         commanding = true;
+        inputCursor.Reset();
+        KeyboardOutput.ReleaseAll();
         ++stateGeneration;
         Display(current);
         try {
@@ -468,6 +459,8 @@ internal sealed partial class MainWindow : Window {
                 "Не удалось подтвердить остановку эмуляции. Закрыть только интерфейс?\n\nСлужба DS5Emu может продолжить работу. Состояние контроллера не подтверждено.\n\n" + result.Error,
                 "Выход из DS5Emu", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
             exiting = true;
+            inputTimer.Stop();
+            KeyboardOutput.ReleaseAll();
             timer.Stop();
             tray?.Icon?.Dispose();
             tray?.Dispose();
@@ -548,6 +541,8 @@ internal sealed partial class MainWindow : Window {
         var resume = current.Enabled;
         var mode = current.Mode;
         commanding = true;
+        inputCursor.Reset();
+        KeyboardOutput.ReleaseAll();
         ++stateGeneration;
         Display(current);
         try {

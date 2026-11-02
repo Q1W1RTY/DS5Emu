@@ -10,7 +10,7 @@ index 8445458..0881503 100644
 +!/tests/
 +!/tests/*.cc
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 4439ed9..cbc38f2 100644
+index 4439ed9..d61aab6 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,6 +1,11 @@
@@ -82,7 +82,7 @@ index 4439ed9..cbc38f2 100644
  
    add_library(vds_usbip OBJECT src/platform/win32/vds_usbip.cc)
    target_include_directories(
-@@ -115,12 +154,24 @@ if(WIN32)
+@@ -115,12 +154,28 @@ if(WIN32)
    target_link_libraries(vds_usbip PUBLIC vds_protocol vds_io vds_log vds_win32
                                          ws2_32 winmm)
  
@@ -93,6 +93,10 @@ index 4439ed9..cbc38f2 100644
    add_executable(vdsd src/platform/win32/vdsd.cc)
 +  target_link_libraries(vdsd PRIVATE dsemu_vigem)
 +  if(BUILD_TESTING)
++    add_executable(dsemu_input_tests tests/input_tests.cc)
++    target_include_directories(dsemu_input_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
++    target_link_libraries(dsemu_input_tests PRIVATE vds_config jsonl vds_common vds_win32 nlohmann_json::nlohmann_json)
++    add_test(NAME input_customization COMMAND dsemu_input_tests)
 +    add_executable(dsemu_xbox_tests tests/xbox_tests.cc)
 +    target_include_directories(dsemu_xbox_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 +    target_link_libraries(dsemu_xbox_tests PRIVATE dsemu_vigem)
@@ -107,7 +111,7 @@ index 4439ed9..cbc38f2 100644
              jsonl
              vds_bt
              vds_common
-@@ -146,6 +197,13 @@ if(WIN32)
+@@ -146,6 +201,13 @@ if(WIN32)
              vds_win32
              vdsctl_common
              advapi32)
@@ -661,7 +665,7 @@ index a951df6..38cae99 100644
  using vds::win::win32_error_message;
  
 diff --git a/src/platform/win32/vdsd.cc b/src/platform/win32/vdsd.cc
-index 34839ba..3999079 100644
+index 34839ba..76407ef 100644
 --- a/src/platform/win32/vdsd.cc
 +++ b/src/platform/win32/vdsd.cc
 @@ -1,3 +1,4 @@
@@ -686,16 +690,17 @@ index 34839ba..3999079 100644
  
  #include <mmsystem.h>
  
-@@ -47,6 +56,8 @@
+@@ -47,6 +56,9 @@
  #include "vds_usbip.hh"
  #include "vds_win32.hh"
  #include "vdsd_common.hh"
 +#include "dsemu_metrics.hh"
 +#include "dsemu_xbox.hh"
++#include "dsemu_input_runtime.hh"
  
  namespace {
  
-@@ -55,7 +66,7 @@ using vds::duration_us;
+@@ -55,7 +67,7 @@ using vds::duration_us;
  using vds::hex_bytes;
  using vds::hex_u8;
  
@@ -704,7 +709,7 @@ index 34839ba..3999079 100644
  constexpr const char *kVirtualPortProviderUnavailableReason =
      "virtual port provider unavailable";
  constexpr const char *kWindowsVirtualPortProviderUnavailable =
-@@ -88,7 +99,7 @@ constexpr auto kAudioWriteSlowWarn = std::chrono::milliseconds(5);
+@@ -88,7 +100,7 @@ constexpr auto kAudioWriteSlowWarn = std::chrono::milliseconds(5);
  constexpr auto kAudioSendGapWarn = std::chrono::milliseconds(15);
  constexpr auto kAudioSummaryInterval = std::chrono::seconds(1);
  constexpr UINT kWindowsTimerResolutionMs = 1;
@@ -713,7 +718,7 @@ index 34839ba..3999079 100644
  constexpr std::uint8_t kTestCommandReportId = 0x80;
  constexpr std::uint8_t kTestCommandResultReportId = 0x81;
  constexpr std::uint8_t kTestCommandCompleteStatus = 0x02;
-@@ -107,6 +118,16 @@ constexpr std::uint32_t kSpeakerWaveoutPeriodFrames =
+@@ -107,6 +119,16 @@ constexpr std::uint32_t kSpeakerWaveoutPeriodFrames =
  constexpr double kSpeakerWaveoutTwoPi = 6.28318530717958647692;
  constexpr std::int16_t kSpeakerWaveoutAmplitude = 12000;
  std::atomic_bool g_stop_requested = false;
@@ -730,7 +735,7 @@ index 34839ba..3999079 100644
  HANDLE g_stop_event = nullptr;
  SERVICE_STATUS_HANDLE g_service_status_handle = nullptr;
  SERVICE_STATUS g_service_status{};
-@@ -138,8 +159,33 @@ struct Options {
+@@ -138,8 +160,33 @@ struct Options {
    std::string db_path;
    std::string log_path;
    std::string pipe = kDefaultControlPipe;
@@ -764,7 +769,15 @@ index 34839ba..3999079 100644
  class TimerResolutionGuard {
  public:
    explicit TimerResolutionGuard(UINT period_ms) : period_ms_(period_ms) {
-@@ -428,6 +474,10 @@ Options parse_platform_args(int argc, char **argv) {
+@@ -310,6 +357,7 @@ audio_output_interval_for_pending(std::size_t pending_chunks,
+ struct BridgeState {
+   std::mutex mutex;
+   vds::DsOutputState output_state;
++  dsemu::InputProcessor input_processor;
+   vds::PcmAudioExtractor extractor{kWindowsPcmWindowFrames};
+   vds::PcmAudioExtractor waveout_extractor{kWindowsPcmWindowFrames};
+   vds::MicAudioDecoder mic_decoder;
+@@ -428,6 +476,10 @@ Options parse_platform_args(int argc, char **argv) {
        }
      } else if (arg == "--pipe") {
        options.pipe = next_value(i, arg);
@@ -775,7 +788,7 @@ index 34839ba..3999079 100644
      } else {
        throw std::runtime_error("unknown option: " + std::string(arg));
      }
-@@ -1033,6 +1083,7 @@ void handle_virtual_frame(HANDLE virtual_device, BluetoothTransport &bluetooth,
+@@ -1033,6 +1085,7 @@ void handle_virtual_frame(HANDLE virtual_device, BluetoothTransport &bluetooth,
    if (frame.header.type != VDS_FRAME_USB_AUDIO_OUT) {
      return;
    }
@@ -783,7 +796,7 @@ index 34839ba..3999079 100644
  
    const auto audio_start = Clock::now();
    const auto peaks = pcm_channel_peaks(frame.payload);
-@@ -1265,6 +1316,7 @@ void handle_bluetooth_frame(HANDLE virtual_device,
+@@ -1265,6 +1318,7 @@ void handle_bluetooth_frame(HANDLE virtual_device,
          return;
        }
        if (pcm) {
@@ -791,9 +804,12 @@ index 34839ba..3999079 100644
          for (std::size_t offset = 0; offset + 3 < pcm->size();
               offset += 2 * sizeof(std::int16_t)) {
            (*pcm)[offset + 0] = (*pcm)[offset + 2];
-@@ -1307,6 +1359,13 @@ void handle_bluetooth_frame(HANDLE virtual_device,
+@@ -1305,8 +1359,16 @@ void handle_bluetooth_frame(HANDLE virtual_device,
+       return;
+     }
  
-     const auto report = bt_input_to_usb_input(frame.payload);
+-    const auto report = bt_input_to_usb_input(frame.payload);
++    auto report = bt_input_to_usb_input(frame.payload);
      if (report) {
 +      {
 +        std::lock_guard lock(g_telemetry.mutex);
@@ -802,10 +818,11 @@ index 34839ba..3999079 100644
 +        g_telemetry.battery=battery.percent;g_telemetry.charging=battery.charging;
 +        g_telemetry.headphones=((*report)[54]&1)!=0;
 +      }
++      dsemu::input::process(state.input_processor,*report);
        vds::win::write_handle_frame(virtual_device, VDS_FRAME_USB_HID_IN,
                                     *report, "virtual",
                                     handle_io_cancellation());
-@@ -1357,6 +1416,7 @@ void handle_bluetooth_frame(HANDLE virtual_device,
+@@ -1357,6 +1419,7 @@ void handle_bluetooth_frame(HANDLE virtual_device,
          }
          state.mute_button_down = mute_button_down;
          mic_muted = state.mic_muted;
@@ -813,7 +830,7 @@ index 34839ba..3999079 100644
          send_mic_state = mic_mute_changed ||
                           (headset_mic_changed && state.audio_in_stream_active);
          if (send_mic_state) {
-@@ -1661,7 +1721,7 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
+@@ -1661,7 +1724,7 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
          ++state.audio_stale_dropped_count;
          ++stale_dropped_now;
        }
@@ -822,7 +839,7 @@ index 34839ba..3999079 100644
        has_signal = chunk.has_signal;
        has_haptics_signal = chunk.has_haptics_signal;
        vds::HapticsChunk haptics = chunk.haptics;
-@@ -1705,10 +1765,6 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
+@@ -1705,10 +1768,6 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
      std::size_t pending_count = 0;
      {
        std::lock_guard guard(state.mutex);
@@ -833,7 +850,7 @@ index 34839ba..3999079 100644
        if (sending_keepalive) {
          ++state.audio_keepalive_blocked_count;
        } else {
-@@ -1746,10 +1802,6 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
+@@ -1746,10 +1805,6 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
  
    {
      std::lock_guard guard(state.mutex);
@@ -844,7 +861,7 @@ index 34839ba..3999079 100644
      pending_after_pop = state.pending_audio_chunks.size();
      if (pending_after_pop == 0) {
        state.audio_jitter_buffer_start = {};
-@@ -2034,6 +2086,62 @@ void bluetooth_to_virtual_loop(BluetoothTransport &bluetooth,
+@@ -2034,6 +2089,64 @@ void bluetooth_to_virtual_loop(BluetoothTransport &bluetooth,
    }
  }
  
@@ -852,6 +869,7 @@ index 34839ba..3999079 100644
 +void run_xbox_session(const std::string& address, vds::Logger& logger,
 +                      std::atomic_bool& stop) {
 +  dsemu::XboxTarget xbox;
++  dsemu::InputProcessor input_processor;
 +  std::string error;
 +  auto device=find_connected_bluetooth_device(address,&error);
 +  if(!device)throw std::runtime_error(error);
@@ -891,6 +909,7 @@ index 34839ba..3999079 100644
 +      if(frame.header.type!=VDS_FRAME_BT_INTERRUPT_PACKET)continue;
 +      auto report=bt_input_to_usb_input(frame.payload);
 +      if(!report)continue;
++      dsemu::input::process(input_processor,*report);
 +      xbox.update(*report);
 +      std::lock_guard lock(g_telemetry.mutex);
 +      g_telemetry.last_input=Clock::now();g_telemetry.metrics.add(g_telemetry.last_input);
@@ -907,7 +926,7 @@ index 34839ba..3999079 100644
  void run_bridge_session(const std::string &device_address,
                          const std::string &virtual_device,
                          const vds::ControllerConfig *selected_config,
-@@ -2064,6 +2172,7 @@ void run_bridge_session(const std::string &device_address,
+@@ -2064,6 +2177,7 @@ void run_bridge_session(const std::string &device_address,
        vds::win::usbip::open_virtual_port(profile, selected_config->ports[0],
                                           logger);
    BridgeState state;
@@ -915,7 +934,7 @@ index 34839ba..3999079 100644
    std::mutex bluetooth_mutex;
    UniqueHandle virtual_device_handle = open_device(virtual_port->pipe_path());
    std::atomic_bool bridge_restart_requested = false;
-@@ -2076,6 +2185,21 @@ void run_bridge_session(const std::string &device_address,
+@@ -2076,6 +2190,21 @@ void run_bridge_session(const std::string &device_address,
          std::this_thread::sleep_for(std::chrono::milliseconds(100));
        }
        if (g_stop_requested.load() || session_stop_requested->load()) {
@@ -937,7 +956,7 @@ index 34839ba..3999079 100644
          request_bridge_restart(virtual_device_handle.get(), bluetooth.get(),
                                 bridge_restart_requested);
        }
-@@ -2172,7 +2296,7 @@ struct BridgeWorker {
+@@ -2172,7 +2301,7 @@ struct BridgeWorker {
  
  class ControlPipeServer {
  public:
@@ -946,7 +965,7 @@ index 34839ba..3999079 100644
        : logger_(logger), pipe_name_(std::move(pipe_name)),
          stop_event_(CreateEventA(nullptr, TRUE, FALSE, nullptr)),
          command_event_(CreateEventA(nullptr, TRUE, FALSE, nullptr)) {
-@@ -2180,6 +2304,23 @@ public:
+@@ -2180,6 +2309,23 @@ public:
        throw std::runtime_error("failed to create control pipe event: " +
                                 win32_error_message(GetLastError()));
      }
@@ -970,7 +989,7 @@ index 34839ba..3999079 100644
      thread_ = std::thread([this] { thread_main(); });
    }
  
-@@ -2284,10 +2425,11 @@ private:
+@@ -2284,10 +2430,11 @@ private:
  
    void thread_main() {
      while (!stop_requested_) {
@@ -985,7 +1004,7 @@ index 34839ba..3999079 100644
        if (!pipe) {
          logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
                      "failed to create control pipe " + pipe_name_ + ": " +
-@@ -2310,7 +2452,7 @@ private:
+@@ -2310,7 +2457,7 @@ private:
                          DWORD &bytes_transferred, std::string_view label) {
      HANDLE wait_handles[2] = {overlapped.hEvent, stop_event_.get()};
      const DWORD wait_result =
@@ -994,7 +1013,7 @@ index 34839ba..3999079 100644
      if (wait_result == WAIT_OBJECT_0 + 1) {
        CancelIoEx(pipe, &overlapped);
        (void)GetOverlappedResult(pipe, &overlapped, &bytes_transferred, TRUE);
-@@ -2380,32 +2522,26 @@ private:
+@@ -2380,32 +2527,26 @@ private:
        return std::nullopt;
      }
  
@@ -1046,7 +1065,7 @@ index 34839ba..3999079 100644
    }
  
    bool write_reply(HANDLE pipe, const std::string &reply) {
-@@ -2447,11 +2583,26 @@ private:
+@@ -2447,11 +2588,26 @@ private:
      }
  
      const std::string reply = queue_command(*command);
@@ -1074,7 +1093,7 @@ index 34839ba..3999079 100644
    UniqueHandle stop_event_;
    UniqueHandle command_event_;
    std::thread thread_;
-@@ -2518,14 +2669,15 @@ void run_configured_bridge_worker(vds::ControllerConfig config,
+@@ -2518,14 +2674,15 @@ void run_configured_bridge_worker(vds::ControllerConfig config,
                                    std::atomic_bool &stop_requested,
                                    std::atomic_bool &done,
                                    std::string &last_error,
@@ -1092,7 +1111,7 @@ index 34839ba..3999079 100644
                         &stop_requested, &trace_flags);
      if (!g_stop_requested && !stop_requested.load()) {
        last_error = "bridge session ended";
-@@ -2550,7 +2702,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2550,7 +2707,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
    std::vector<std::string> discovery_warned_states;
    std::vector<std::string> no_port_warned_addresses;
    std::vector<std::string> port_binding_warned_states;
@@ -1101,7 +1120,7 @@ index 34839ba..3999079 100644
    UniqueHandle retry_timer(CreateWaitableTimerExA(
        nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
        TIMER_MODIFY_STATE | SYNCHRONIZE));
-@@ -2565,8 +2717,20 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2565,8 +2722,20 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
    std::atomic_uint32_t trace_flags = 0;
    bool reload_requested = false;
    bool scan_requested = true;
@@ -1122,7 +1141,7 @@ index 34839ba..3999079 100644
    logger.log(vds::LogScope::Daemon, vds::LogLevel::Info,
               "Windows bridge supervisor started pipe=" + options.pipe);
  
-@@ -2603,6 +2767,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2603,6 +2772,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
            (*worker)->thread.join();
          }
          if (!(*worker)->last_error.empty()) {
@@ -1130,7 +1149,7 @@ index 34839ba..3999079 100644
            vds::record_vdsd_worker_failure(
                worker_failure_backoffs, (*worker)->address,
                Clock::now() + kBridgeWorkerFailureRetryDelay);
-@@ -2614,9 +2779,29 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2614,9 +2784,29 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
        }
      }
      if (worker_removed) {
@@ -1160,7 +1179,7 @@ index 34839ba..3999079 100644
      if (reload_requested) {
        scan_requested = true;
      }
-@@ -2628,10 +2813,27 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2628,10 +2818,27 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
        scan_requested = true;
      }
  
@@ -1189,7 +1208,7 @@ index 34839ba..3999079 100644
          if (!config_load_logged || reload_requested) {
            logger.log(vds::LogScope::Daemon, vds::LogLevel::Info,
                       "loaded controller config count=" +
-@@ -2640,12 +2842,14 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2640,12 +2847,14 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
          }
          const std::vector<unsigned> enabled_ports = enabled_virtual_ports();
          const bool virtual_port_provider_is_available =
@@ -1206,7 +1225,7 @@ index 34839ba..3999079 100644
                detail = kWindowsVirtualPortProviderUnavailable;
              } else {
                detail = kWindowsHidHideProviderUnavailable;
-@@ -2664,13 +2868,13 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2664,13 +2873,13 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
          }
  
          const std::vector<HidBluetoothDevice> hid_devices =
@@ -1222,7 +1241,7 @@ index 34839ba..3999079 100644
              logger.log(
                  vds::LogScope::Daemon, vds::LogLevel::Info,
                  "Windows bridge worker retiring address=" + worker->address +
-@@ -2688,6 +2892,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2688,6 +2897,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
          }
  
          for (const auto &config : db.controllers) {
@@ -1230,7 +1249,7 @@ index 34839ba..3999079 100644
            if (!vds::consume_vdsd_worker_retry(worker_failure_backoffs,
                                                config.address, Clock::now())) {
              continue;
-@@ -2785,11 +2990,11 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2785,11 +2995,11 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
            BridgeWorker *worker_ptr = worker.get();
            worker->thread = std::thread([worker_config = launch.config,
                                          device_address = launch.device_address,
@@ -1244,7 +1263,7 @@ index 34839ba..3999079 100644
              SetEvent(worker_ptr->done_event.get());
            });
            logger.log(
-@@ -2814,7 +3019,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2814,7 +3024,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
      }
  
      const auto now = Clock::now();
@@ -1253,7 +1272,7 @@ index 34839ba..3999079 100644
      if (!worker_failure_backoffs.empty()) {
        const auto next_retry = std::min_element(
            worker_failure_backoffs.begin(), worker_failure_backoffs.end(),
-@@ -2899,6 +3104,83 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2899,6 +3109,97 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
        break;
      case WaitKind::Control:
        control_pipe.service_ready([&](const std::string &command) {
@@ -1265,7 +1284,20 @@ index 34839ba..3999079 100644
 +              if(request.at("protocolVersion")!=1)throw std::runtime_error("PROTOCOL_VERSION_MISMATCH");
 +              const auto action=request.at("command").get<std::string>();
 +              if((action=="enable" || action=="enablePS5" || action=="enableXbox" || action=="reconnect" || action=="disconnect") && (pending_disconnect || disconnect_task.valid()))throw std::runtime_error("BLUETOOTH_DISCONNECT_PENDING");
-+              if(action=="disconnect") {
++              if(action=="getInputPreview") {
++                auto payload=dsemu::input::preview();
++                payload["enabled"]=bridge_enabled && std::any_of(workers.begin(),workers.end(),[](const auto& worker){return !worker->stop_requested && !worker->done;});
++                response["payload"]=payload;return response.dump()+"\n";
++              }
++              if(action=="getInputEvents") {
++                const auto after=request.value("afterSequence",std::uint64_t{});
++                auto payload=dsemu::input::read_events(after);
++                payload["enabled"]=bridge_enabled && std::any_of(workers.begin(),workers.end(),[](const auto& worker){return !worker->stop_requested && !worker->done;});
++                response["payload"]=payload;return response.dump()+"\n";
++              }
++              if(action=="setInputOptions") {
++                dsemu::input::update(request.at("options"));
++              } else if(action=="disconnect") {
 +                const auto config=vds::load_config_db(options.db_path);
 +                if(config.controllers.size()!=1 || config.controllers.front().profile!=vds::ControllerProfile::Ds5)throw std::runtime_error("CONTROLLER_NOT_CONFIGURED");
 +                if(!exclusive_owner_reason().empty())throw std::runtime_error("CONTROLLER_BUSY");
@@ -1322,6 +1354,7 @@ index 34839ba..3999079 100644
 +                auto metrics=g_telemetry.metrics.snapshot(now);
 +                state["packetsPerSecond"]=metrics.packets_per_second;state["gapsOver10ms"]=metrics.gaps_over_10ms;state["maxGapMs"]=metrics.max_gap_ms;state["observedSeconds"]=metrics.observed_seconds;
 +              }
++              state["inputOptions"]=dsemu::input::current();
 +              state["mode"]=mode;state["enabled"]=bridge_enabled;state["bluetoothDisconnected"]=bluetooth_disconnected;
 +              state["error"]=!blocked_reason.empty()?(blocked_reason=="USB"?"Подключён USB DualSense. Эмуляция приостановлена.":"DSX запущен. Эмуляция приостановлена до его закрытия."):state["state"]=="Active"?"":last_error;state["transport"]=blocked_reason=="USB"?"USB":"Bluetooth";state["rssi"]=nullptr;
 +              if(action=="getDiagnostics") {
@@ -1337,7 +1370,7 @@ index 34839ba..3999079 100644
          std::uint32_t current_trace_flags = trace_flags.load();
          const std::string reply = handle_supervisor_control_command(
              command, workers, options.db_path, current_trace_flags,
-@@ -2935,6 +3217,7 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+@@ -2935,6 +3236,7 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
    try {
      g_stop_requested = false;
      const Options options = parse_platform_args(argc, argv);
@@ -1345,18 +1378,20 @@ index 34839ba..3999079 100644
      UniqueHandle stop_event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
      if (!stop_event) {
        throw std::runtime_error("failed to create stop event: " +
-@@ -2946,6 +3229,10 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+@@ -2946,6 +3248,12 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
      }
  
      vds::Logger logger(options.log_path);
 +    if(options.repair_only) {
++      try{dsemu::input::configure(options.db_path+".input.json");}
++      catch(const std::exception& error){logger.log(vds::LogScope::Daemon,vds::LogLevel::Warn,std::string("Input options disabled: ")+error.what());}
 +      vds::win::hidhide::configure_recovery(options.db_path+".hidhide-recovery.json");
 +      vds::win::hidhide::recover_changes();return 0;
 +    }
      try {
        TimerResolutionGuard timer_resolution(kWindowsTimerResolutionMs);
        logger.log(
-@@ -2953,19 +3240,18 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+@@ -2953,19 +3261,20 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
            timer_resolution.active() ? vds::LogLevel::Info : vds::LogLevel::Warn,
            std::string("Windows timer resolution 1 ms ") +
                (timer_resolution.active() ? "enabled" : "request failed"));
@@ -1373,6 +1408,8 @@ index 34839ba..3999079 100644
 -        throw std::runtime_error(kWindowsHidHideProviderUnavailable);
 +        // Keep control/diagnostics available even when a provider needs repair.
 +      }
++      try{dsemu::input::configure(options.db_path+".input.json");}
++      catch(const std::exception& error){logger.log(vds::LogScope::Daemon,vds::LogLevel::Warn,std::string("Input options disabled: ")+error.what());}
 +      vds::win::hidhide::configure_recovery(options.db_path+".hidhide-recovery.json");
 +      try {vds::win::hidhide::recover_changes();}
 +      catch(const std::exception& error){
@@ -1383,7 +1420,7 @@ index 34839ba..3999079 100644
        if (service_mode) {
          update_service_status(SERVICE_RUNNING);
          logger.log(vds::LogScope::Daemon, vds::LogLevel::Info,
-@@ -3011,7 +3297,7 @@ void WINAPI service_main(DWORD argc, LPSTR *argv) {
+@@ -3011,7 +3320,7 @@ void WINAPI service_main(DWORD argc, LPSTR *argv) {
  
    update_service_status(SERVICE_START_PENDING, ERROR_SUCCESS, 5000);
    g_service_exit_code = static_cast<DWORD>(
@@ -1392,7 +1429,7 @@ index 34839ba..3999079 100644
    update_service_status(SERVICE_STOPPED, g_service_exit_code == 0
                                               ? ERROR_SUCCESS
                                               : ERROR_SERVICE_SPECIFIC_ERROR);
-@@ -3035,6 +3321,7 @@ bool dispatch_service_if_needed() {
+@@ -3035,6 +3344,7 @@ bool dispatch_service_if_needed() {
  }
  
  int main(int argc, char **argv) {
@@ -2206,6 +2243,138 @@ index 0000000..0798add
 +  return dropped;
 +}
 +}
+diff --git a/src/dsemu_input.hh b/src/dsemu_input.hh
+new file mode 100644
+index 0000000..2aca86a
+--- /dev/null
++++ b/src/dsemu_input.hh
+@@ -0,0 +1,62 @@
++#pragma once
++#include <algorithm>
++#include <cmath>
++#include <cstdint>
++#include <optional>
++#include <span>
++
++namespace dsemu {
++struct InputOptions {
++ int left_deadzone=0,right_deadzone=0;
++ bool touch_enabled=false,consume_touchpad=true;
++ bool operator==(const InputOptions&) const=default;
++};
++enum class TouchAction {LeftClick,RightClick,Tap,SwipeLeft,SwipeRight,SwipeUp,SwipeDown};
++inline const char* action_name(TouchAction action){
++ switch(action){case TouchAction::LeftClick:return "leftClick";case TouchAction::RightClick:return "rightClick";case TouchAction::Tap:return "tap";case TouchAction::SwipeLeft:return "swipeLeft";case TouchAction::SwipeRight:return "swipeRight";case TouchAction::SwipeUp:return "swipeUp";default:return "swipeDown";}
++}
++inline void deadzone(std::uint8_t& x,std::uint8_t& y,int percent){
++ if(percent==0)return;
++ const auto axis=[](int v){return (v-128)/(v>=128?127.0:128.0);};
++ const double nx=axis(x),ny=axis(y),radius=std::hypot(nx,ny),zone=percent/100.0;
++ if(radius<=zone){x=y=128;return;}
++ const auto encode=[](double v){v=std::clamp(v,-1.0,1.0);return static_cast<std::uint8_t>(std::lround(128+v*(v>=0?127:128)));};
++ const double scale=(radius-zone)/(radius*(1-zone));x=encode(nx*scale);y=encode(ny*scale);
++}
++class InputProcessor {
++ InputOptions previous_{};bool initialized_=false,click_=false,tracking_=false,clicked_=false,multitouch_=false;
++ int id_=0,start_x_=0,start_y_=0,last_x_=0,last_y_=0;std::int64_t started_=0;
++public:
++ std::optional<TouchAction> process(std::span<std::uint8_t> r,const InputOptions& options,std::int64_t now){
++  if(r.size()<41 || r[0]!=1)return {};
++  deadzone(r[1],r[2],options.left_deadzone);deadzone(r[3],r[4],options.right_deadzone);
++  if(!options.touch_enabled){initialized_=tracking_=click_=multitouch_=false;previous_=options;return {};}
++  // USB report: contact at 33, packed 12-bit X/Y at 34..36; click is byte 10 bit 1.
++  // Layout reference: Linux drivers/hid/hid-playstation.c, dualsense_input_report.
++  const bool active=(r[33]&128)==0,second=(r[37]&128)==0,click=(r[10]&2)!=0;
++  const int id=r[33]&127,x=r[34]|((r[35]&15)<<8),y=(r[35]>>4)|(r[36]<<4);
++  const bool reset=!initialized_ || previous_!=options;
++  previous_=options;std::optional<TouchAction> result;
++  if(reset){initialized_=true;tracking_=false;click_=click;}
++  if(second){tracking_=false;clicked_=true;multitouch_=true;}
++  else if(active && !multitouch_){
++   if(!tracking_ || id_!=id){tracking_=true;id_=id;start_x_=last_x_=x;start_y_=last_y_=y;started_=now;clicked_=click || reset;}
++   last_x_=x;last_y_=y;
++  }
++  if(!reset && click && !click_){result=last_x_<960?TouchAction::LeftClick:TouchAction::RightClick;clicked_=true;}
++  if(!active && tracking_){
++   const int dx=last_x_-start_x_,dy=last_y_-start_y_;const auto duration=now-started_;
++   if(!result && !clicked_ && duration>=30 && duration<=800){
++    if(std::abs(dx)>=240 && std::abs(dx)>std::abs(dy))result=dx<0?TouchAction::SwipeLeft:TouchAction::SwipeRight;
++    else if(std::abs(dy)>=180 && std::abs(dy)>std::abs(dx))result=dy<0?TouchAction::SwipeUp:TouchAction::SwipeDown;
++    else if(std::abs(dx)<80 && std::abs(dy)<80 && duration<=250)result=TouchAction::Tap;
++   }
++   tracking_=false;
++  }
++  if(!active && !second)multitouch_=false;
++  click_=click;
++  if(options.consume_touchpad){r[10]&=static_cast<std::uint8_t>(~2);r[33]|=128;r[37]|=128;}
++  return result;
++ }
++};
++}
+diff --git a/src/platform/win32/dsemu_input_runtime.hh b/src/platform/win32/dsemu_input_runtime.hh
+new file mode 100644
+index 0000000..bf15bc5
+--- /dev/null
++++ b/src/platform/win32/dsemu_input_runtime.hh
+@@ -0,0 +1,58 @@
++#pragma once
++#include "dsemu_input.hh"
++#include "vds_fs.hh"
++#include <nlohmann/json.hpp>
++#include <chrono>
++#include <deque>
++#include <array>
++#include <mutex>
++
++namespace dsemu::input {
++using Clock=std::chrono::steady_clock;
++inline std::mutex mutex;
++inline InputOptions options;
++inline std::filesystem::path settings_path;
++struct Event {std::uint64_t sequence;TouchAction action;Clock::time_point time;};
++inline std::deque<Event> events;
++inline std::uint64_t sequence=0;
++inline Clock::time_point heartbeat{},sample_time{};
++inline std::array<std::uint8_t,41> sample{};
++inline const std::string epoch=std::to_string(Clock::now().time_since_epoch().count());
++inline nlohmann::json json(const InputOptions& o){return {{"leftDeadzone",o.left_deadzone},{"rightDeadzone",o.right_deadzone},{"touchEnabled",o.touch_enabled},{"consumeTouchpad",o.consume_touchpad}};}
++inline InputOptions parse(const nlohmann::json& j){
++ if(!j.is_object() || !j.at("leftDeadzone").is_number_integer() || !j.at("rightDeadzone").is_number_integer() || !j.at("touchEnabled").is_boolean() || !j.at("consumeTouchpad").is_boolean())throw std::runtime_error("INVALID_INPUT_OPTIONS");
++ if(j.at("leftDeadzone")<0 || j.at("leftDeadzone")>30 || j.at("rightDeadzone")<0 || j.at("rightDeadzone")>30)throw std::runtime_error("INVALID_INPUT_OPTIONS");
++ InputOptions o{j.at("leftDeadzone").get<int>(),j.at("rightDeadzone").get<int>(),j.at("touchEnabled").get<bool>(),j.at("consumeTouchpad").get<bool>()};
++ if(o.left_deadzone<0 || o.left_deadzone>30 || o.right_deadzone<0 || o.right_deadzone>30)throw std::runtime_error("INVALID_INPUT_OPTIONS");
++ return o;
++}
++inline void configure(const std::string& path){
++ std::lock_guard guard(mutex);settings_path=std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(path.data()),path.size()));
++ if(std::filesystem::exists(settings_path) && std::filesystem::file_size(settings_path)>4096)throw std::runtime_error("Input options file is too large");
++ const auto text=vds::read_file_if_exists(settings_path);if(!text.empty())options=parse(nlohmann::json::parse(text));
++}
++inline nlohmann::json current(){std::lock_guard guard(mutex);return json(options);}
++inline void update(const nlohmann::json& value){
++ auto next=parse(value);std::filesystem::path path;{std::lock_guard guard(mutex);path=settings_path;}
++ vds::write_file_atomic(path,json(next).dump());std::lock_guard guard(mutex);options=next;events.clear();heartbeat={};
++}
++inline void process(InputProcessor& processor,std::span<std::uint8_t> report){
++ const auto now=Clock::now();std::lock_guard guard(mutex);auto effective=options;
++ if(report.size()>=sample.size() && report[0]==1){std::copy_n(report.begin(),sample.size(),sample.begin());sample_time=now;}
++ effective.touch_enabled=options.touch_enabled && heartbeat!=Clock::time_point{} && now-heartbeat<std::chrono::milliseconds(500);
++ const auto action=processor.process(report,effective,std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
++ if(action){events.push_back({++sequence,*action,now});while(events.size()>64)events.pop_front();}
++}
++// Preview is read-only: it must not renew the touch-mapping heartbeat.
++inline nlohmann::json preview(){
++ std::lock_guard guard(mutex);
++ const auto age=sample_time==Clock::time_point{}?-1:std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now()-sample_time).count();
++ auto contact=[&](int offset){return nlohmann::json{{"active",(sample[offset]&128)==0},{"x",sample[offset+1]|((sample[offset+2]&15)<<8)},{"y",(sample[offset+2]>>4)|(sample[offset+3]<<4)}};};
++ return {{"ageMs",age},{"leftX",sample[1]},{"leftY",sample[2]},{"rightX",sample[3]},{"rightY",sample[4]},{"click",(sample[10]&2)!=0},{"touches",nlohmann::json::array({contact(33),contact(37)})}};
++}
++inline nlohmann::json read_events(std::uint64_t after){
++ std::lock_guard guard(mutex);const auto now=Clock::now();heartbeat=now;nlohmann::json rows=nlohmann::json::array();
++ for(const auto& event:events)if(event.sequence>after)rows.push_back({{"sequence",event.sequence},{"action",action_name(event.action)},{"ageMs",std::chrono::duration_cast<std::chrono::milliseconds>(now-event.time).count()}});
++ return {{"epoch",epoch},{"sequence",sequence},{"events",rows}};
++}
++}
 diff --git a/src/platform/win32/dsemu_xbox.hh b/src/platform/win32/dsemu_xbox.hh
 new file mode 100644
 index 0000000..b6725ad
@@ -2316,6 +2485,60 @@ index 0000000..5b8fddb
 + check(dsemu::trim_audio_queue(queue,start+301ms,8,100ms)==8 && queue.empty(),"old tail survived age limit");
 + std::cout<<"audio queue freshness tests passed\n";return 0;
 +}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+diff --git a/tests/input_tests.cc b/tests/input_tests.cc
+new file mode 100644
+index 0000000..f38eaaa
+--- /dev/null
++++ b/tests/input_tests.cc
+@@ -0,0 +1,48 @@
++#include <array>
++#include <iostream>
++#include <stdexcept>
++#include "dsemu_input.hh"
++#include "platform/win32/dsemu_input_runtime.hh"
++#include <thread>
++using Report=std::array<std::uint8_t,64>;
++void check(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
++Report neutral(){Report r{};r[0]=1;r[1]=r[2]=r[3]=r[4]=128;r[33]=r[37]=128;return r;}
++Report touch(int x,int y,bool click=false,int id=1){auto r=neutral();r[33]=id;r[34]=x&255;r[35]=((x>>8)&15)|((y&15)<<4);r[36]=y>>4;r[10]=click?2:0;return r;}
++int main(){
++ dsemu::InputProcessor p;dsemu::InputOptions off;
++ for(int x=0;x<256;x++)for(int y=0;y<256;y++){auto r=neutral();r[1]=x;r[2]=y;auto original=r;check(!p.process(r,off,0) && r==original,"disabled processing changed native report");}
++ auto r=neutral();r[1]=140;r[2]=120;r[3]=255;auto original=r;
++ dsemu::InputOptions zones{20,0,false,true};p.process(r,zones,0);check(r[1]==128 && r[2]==128 && r[3]==255,"independent stick deadzones failed");
++ int last=128;for(int x=128;x<256;x++){auto s=neutral();s[1]=x;p.process(s,zones,0);check(s[1]>=last,"deadzone response not monotonic");last=s[1];}check(last==255,"deadzone lost full stick range");
++ auto diagonal=neutral();diagonal[1]=diagonal[2]=255;p.process(diagonal,zones,0);check(diagonal[1]==255 && diagonal[2]==255,"corner range clipped");
++ dsemu::InputOptions enabled{0,0,true,true};
++ auto reset=[&]{p=dsemu::InputProcessor{};auto n=neutral();p.process(n,enabled,0);};
++ reset();r=touch(200,300);p.process(r,enabled,10);r=touch(200,300,true);check(p.process(r,enabled,20)==dsemu::TouchAction::LeftClick,"left click missing");check((r[10]&2)==0 && (r[33]&128)!=0,"consumed touchpad leaked to game");
++ r=touch(200,300,true);check(!p.process(r,enabled,30),"held click repeated");r=neutral();check(!p.process(r,enabled,100),"click also emitted tap");
++ reset();r=touch(1700,300);p.process(r,enabled,10);r=touch(1700,300,true);check(p.process(r,enabled,20)==dsemu::TouchAction::RightClick,"right click missing");
++ reset();r=touch(200,300);p.process(r,enabled,10);r=neutral();check(p.process(r,enabled,100)==dsemu::TouchAction::Tap,"tap missing");
++ for(auto direction:{dsemu::TouchAction::SwipeLeft,dsemu::TouchAction::SwipeRight,dsemu::TouchAction::SwipeUp,dsemu::TouchAction::SwipeDown}){
++  reset();r=touch(900,500);p.process(r,enabled,10);
++  r=touch(direction==dsemu::TouchAction::SwipeLeft?300:direction==dsemu::TouchAction::SwipeRight?1500:900,direction==dsemu::TouchAction::SwipeUp?100:direction==dsemu::TouchAction::SwipeDown?900:500);p.process(r,enabled,100);r=neutral();check(p.process(r,enabled,180)==direction,"swipe direction failed");
++ }
++ reset();r=touch(100,100);r[37]=2;p.process(r,enabled,10);r=touch(1000,100);p.process(r,enabled,100);r=neutral();check(!p.process(r,enabled,150),"multi-touch emitted a gesture");
++ reset();r=touch(100,100);p.process(r,enabled,10);r=touch(100,100,false,2);p.process(r,enabled,50);r=neutral();check(p.process(r,enabled,100)==dsemu::TouchAction::Tap,"contact ID change was not reset");
++ p=dsemu::InputProcessor{};r=touch(100,100,true);check(!p.process(r,enabled,0),"initial held click replayed");r=neutral();check(!p.process(r,enabled,100),"initial held contact replayed tap");
++ reset();auto native=enabled;native.consume_touchpad=false;r=neutral();p.process(r,native,0);r=touch(100,100,true);auto copy=r;check(p.process(r,native,20)==dsemu::TouchAction::LeftClick && r==copy,"native touch passthrough was modified");
++ const auto path=std::filesystem::temp_directory_path()/("dsemu-input-test-"+dsemu::input::epoch+".json");
++ check(dsemu::input::preview()["ageMs"]==-1,"preview invented an input sample");
++ dsemu::input::configure(path.string());
++ auto settings=dsemu::input::json(enabled);dsemu::input::update(settings);
++ check(std::filesystem::exists(path),"input settings were not persisted");
++ bool rejected=false;auto invalid=settings;invalid["leftDeadzone"]=31;try{dsemu::input::update(invalid);}catch(...){rejected=true;}check(rejected && dsemu::input::current()==settings,"invalid options changed live settings");
++ invalid=settings;invalid["leftDeadzone"]=4294967296ULL;rejected=false;try{dsemu::input::parse(invalid);}catch(...){rejected=true;}check(rejected,"out-of-range JSON integer accepted");
++ dsemu::InputProcessor live;r=touch(100,100,true);auto originalTouch=r;dsemu::input::process(live,r);check(r==originalTouch,"touch consumed without UI heartbeat");
++ auto snapshot=dsemu::input::preview();check(snapshot["touches"][0]["x"]==100 && snapshot["click"]==true && snapshot["ageMs"]>=0,"preview lost raw touch input");
++ dsemu::input::preview();r=touch(100,100,true);originalTouch=r;dsemu::input::process(live,r);check(r==originalTouch,"read-only preview enabled touch consumption");
++ dsemu::input::read_events(0);r=neutral();dsemu::input::process(live,r);r=touch(100,100,true);dsemu::input::process(live,r);
++ auto batch=dsemu::input::read_events(0);check(batch["events"].size()==1,"touch event not queued");auto seq=batch["sequence"].get<std::uint64_t>();check(dsemu::input::read_events(seq)["events"].empty(),"acknowledged touch event repeated");
++ std::this_thread::sleep_for(std::chrono::milliseconds(550));check(dsemu::input::preview()["ageMs"]>=500,"stale preview not marked stale");dsemu::input::preview();r=touch(100,100,true);originalTouch=r;dsemu::input::process(live,r);check(r==originalTouch,"touch not restored after UI heartbeat expired");
++ auto previewZones=settings;previewZones["leftDeadzone"]=20;dsemu::input::update(previewZones);r=neutral();r[1]=140;dsemu::input::process(live,r);check(r[1]==128 && dsemu::input::preview()["leftX"]==140,"preview captured transformed stick instead of raw input");dsemu::input::update(settings);
++ dsemu::input::configure(path.string());check(dsemu::input::current()==settings,"saved input options did not reload");std::filesystem::remove(path);
++ std::cout<<"Input defaults, deadzones, clicks, gestures, contact changes and passthrough passed\n";
++}
 diff --git a/tests/xbox_tests.cc b/tests/xbox_tests.cc
 new file mode 100644
 index 0000000..8a5b1d5

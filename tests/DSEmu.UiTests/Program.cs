@@ -44,6 +44,47 @@ internal class Program {
    }
    ++checks;
   }
+  foreach(var viewport in new[]{new Size(860,690),new Size(960,790)}){
+   var main=(Window)Activator.CreateInstance(wt,new object[]{true})!;
+   if(main.FindName("InputSettingsPanel")!=null)throw new Exception("Settings must be a separate window");
+   var window=(Window)wt.GetMethod("CreateInputSettingsWindow",BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(main,null)!;
+   if(window.WindowStyle!=WindowStyle.None || !window.AllowsTransparency || window.FindName("DragHeader")==null)throw new Exception("Settings must use the application chrome");
+   var mainFrame=(Style)main.FindResource("SharedWindowFrame");var settingsFrame=(Border)window.FindName("WindowFrame");
+   if(settingsFrame.CornerRadius!=new CornerRadius(28) || settingsFrame.Background.ToString()!=((System.Windows.Media.Brush)main.FindResource("ShellFrameBrush")).ToString())throw new Exception("Settings frame differs from main theme");
+   if(((CheckBox)window.FindName("TouchBindingsEnabled")).IsChecked==true || ((Slider)window.FindName("LeftDeadzone")).Value!=0)throw new Exception("Input defaults are not disabled");
+   if(((StackPanel)window.FindName("TouchMappings")).Children.Count!=7)throw new Exception("Touch mapping controls missing");
+   ((Slider)window.FindName("LeftDeadzone")).Value=20;((Slider)window.FindName("RightDeadzone")).Value=12;
+   var originalProfile=wt.GetField("inputProfile",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(main)!;
+   var options=originalProfile.GetType().GetProperty("Options")!.GetValue(originalProfile)!;
+   if((int)options.GetType().GetProperty("LeftDeadzone")!.GetValue(options)!!=0)throw new Exception("Draft slider changed active profile before Apply");
+   var firstRow=(Grid)((StackPanel)window.FindName("TouchMappings")).Children[0];
+   var bindingButton=firstRow.Children.OfType<Button>().Single();bindingButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+   if(!bindingButton.Content.ToString()!.Contains("Нажмите клавишу"))throw new Exception("Mapping button did not enter keyboard capture");
+   var pt=asm.GetType("DSEmu.InputPreview")!;
+   var sample=System.Text.Json.JsonSerializer.Deserialize("{\"Enabled\":true,\"AgeMs\":5,\"LeftX\":140,\"LeftY\":128,\"RightX\":210,\"RightY\":65,\"Touches\":[{\"Active\":true,\"X\":480,\"Y\":400},{\"Active\":true,\"X\":1500,\"Y\":700}]}",pt)!;
+   var setter=window.GetType().GetMethod("SetPreview",BindingFlags.Instance|BindingFlags.NonPublic)!;setter.Invoke(window,new[]{sample});
+   if(!((TextBlock)window.FindName("ConnectionLabel")).Text.Contains("Живой ввод"))throw new Exception("Fresh preview not shown");
+   var left=window.FindName("LeftVisual");var output=left.GetType().GetProperty("Output",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(left)!;
+   if(!output.Equals((0d,0d)))throw new Exception("Deadzone preview failed to center raw stick");
+   var content=(FrameworkElement)window.Content;content.Measure(viewport);content.Arrange(new Rect(new Point(),viewport));content.UpdateLayout();
+   var settingsScroll=(ScrollViewer)window.FindName("SettingsScroll");settingsScroll.ScrollToBottom();content.UpdateLayout();
+   if(settingsScroll.ExtentHeight>settingsScroll.ViewportHeight+1 && settingsScroll.VerticalOffset<=0)throw new Exception("Settings footer cannot be reached");
+   settingsScroll.ScrollToTop();content.UpdateLayout();
+   var bmp=new RenderTargetBitmap((int)viewport.Width,(int)viewport.Height,96,96,PixelFormats.Pbgra32);bmp.Render(content);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bmp));using var file=File.Create(Path.Combine(folder,"Input-window-"+viewport.Width+".png"));encoder.Save(file);
+   pt.GetProperty("AgeMs")!.SetValue(sample,600);setter.Invoke(window,new[]{sample});
+   if(((TextBlock)window.FindName("ConnectionLabel")).Text.Contains("Живой ввод"))throw new Exception("Stale preview shown as live");
+   if((bool)left.GetType().GetField("HasSample",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(left)!)throw new Exception("Stale stick dot remained visible");
+   ++checks;
+  }
+  {
+   var main=(Window)Activator.CreateInstance(wt,new object[]{true})!;
+   using var menu=(System.Windows.Forms.ContextMenuStrip)wt.GetMethod("CreateTrayMenu",BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(main,null)!;
+   if(!menu.Items.Cast<System.Windows.Forms.ToolStripItem>().Any(item=>item.Text=="Тачпад и стики"))throw new Exception("Input settings missing from tray menu");
+   if(menu.Renderer.GetType().Name!="TrayMenuRenderer" || menu.BackColor!=System.Drawing.Color.FromArgb(24,24,27))throw new Exception("Tray theme differs from application");
+   menu.Size=menu.PreferredSize;
+   using var bitmap=new System.Drawing.Bitmap(menu.Width,menu.Height);menu.DrawToBitmap(bitmap,new System.Drawing.Rectangle(System.Drawing.Point.Empty,menu.Size));bitmap.Save(Path.Combine(folder,"Tray-menu.png"));
+   ++checks;
+  }
   Console.WriteLine(checks+" UI layout/state scenarios passed (synthetic viewport sizes; no hardware)");
  }
 }

@@ -4,7 +4,7 @@
 
 Полноценный DualSense по Bluetooth на Windows: игра видит виртуальный USB-контроллер PS5, а DS5Emu передаёт эффекты и звук на настоящий геймпад.
 
-**[Скачать установщик](https://github.com/Q1W1RTY/DS5Emu/releases/tag/v0.1.12)** · [Инструкция](docs/user/INSTALL.md)
+**[Скачать установщик](https://github.com/Q1W1RTY/DS5Emu/releases/tag/v0.1.13)** · [Инструкция](docs/user/INSTALL.md)
 
 ![Интерфейс DS5Emu](docs/design/main.png)
 
@@ -19,7 +19,7 @@
 
 ## Установка
 
-1. Скачать и запустить **DS5Emu-Setup.exe** из [Releases](https://github.com/Q1W1RTY/DS5Emu/releases/tag/v0.1.12).
+1. Скачать и запустить **DS5Emu-Setup.exe** из [Releases](https://github.com/Q1W1RTY/DS5Emu/releases/tag/v0.1.13).
 2. Установщик проверит драйверы. Для недостающих компонентов нажать «Установить», затем установить приложение. Совместимые имеющиеся драйверы пропускаются. Если потребуется, перезагрузить ПК.
 3. Сопрячь DualSense с Windows по Bluetooth: удерживать **Create + PS** до мигания, затем добавить устройство в параметрах Windows.
 4. Открыть DS5Emu и выбрать режим PS5 или Xbox.
