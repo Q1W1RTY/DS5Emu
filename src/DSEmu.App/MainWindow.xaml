@@ -62,7 +62,7 @@
 
                             <!-- Left: Glyph & Info -->
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <!-- 48x48 Glyph Container with subtle gradient -->
+                                <!-- Generated DualSense artwork inside the existing device tile -->
                                 <Border Width="48" Height="48" CornerRadius="15" BorderBrush="#15FFFFFF" BorderThickness="1">
                                     <Border.Background>
                                         <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
@@ -70,22 +70,9 @@
                                             <GradientStop Color="#08FFFFFF" Offset="1"/>
                                         </LinearGradientBrush>
                                     </Border.Background>
-                                    <Viewbox Width="32" Height="32" Stretch="Uniform">
-                                        <Canvas Width="36" Height="36">
-                                            <!-- Dynamic Lightbar Glow & Path -->
-                                            <Path x:Name="GlyphLightbar" Data="M12.5,11.2 C14.3,11.8 21.7,11.8 23.5,11.2" Stroke="#0A84FF" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
-                                                <Path.Effect>
-                                                    <DropShadowEffect x:Name="GlyphLightbarGlow" BlurRadius="6" ShadowDepth="0" Color="#0A84FF" Opacity="0.9"/>
-                                                </Path.Effect>
-                                            </Path>
-                                            <!-- Controller Body -->
-                                            <Path Data="M10.8,11 C7.6,11 5.6,13.8 5,18.2 C4.3,23.2 5.2,26.8 7.4,27.6 C9.4,28.3 11.1,25.8 12.6,23.2 C13.3,22 14.3,21.5 15.6,21.5 H20.4 C21.7,21.5 22.7,22 23.4,23.2 C24.9,25.8 26.6,28.3 28.6,27.6 C30.8,26.8 31.7,23.2 31,18.2 C30.4,13.8 28.4,11 25.2,11 H10.8 Z" Fill="#E6FFFFFF"/>
-                                            <!-- Thumbsticks and touchpad cutouts -->
-                                            <Ellipse Canvas.Left="12.3" Canvas.Top="16.3" Width="3.8" Height="3.8" Fill="#1C1C1E"/>
-                                            <Ellipse Canvas.Left="19.9" Canvas.Top="16.3" Width="3.8" Height="3.8" Fill="#1C1C1E"/>
-                                            <Rectangle Canvas.Left="13.5" Canvas.Top="11.5" Width="9" Height="3.6" RadiusX="1.2" RadiusY="1.2" Fill="#1C1C1E"/>
-                                        </Canvas>
-                                    </Viewbox>
+                                    <Image x:Name="ControllerArtwork" Width="44" Height="44" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality">
+                                        <Image.Source><BitmapImage UriSource="Assets/DualSense-card.png" DecodePixelWidth="176"/></Image.Source>
+                                    </Image>
                                 </Border>
                                 <!-- Controller Name and Connection Status -->
                                 <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">

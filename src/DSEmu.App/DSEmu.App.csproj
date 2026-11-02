@@ -18,5 +18,6 @@
   <ItemGroup>
     <Resource Include="Assets\DS5Emu.ico" />
     <Resource Include="Assets\DS5Emu.Tray.ico" />
+    <Resource Include="Assets\DualSense-card.png" />
   </ItemGroup>
 </Project>
