@@ -49,6 +49,14 @@ try {
     if(Test-Path $database) {
         if((Get-Item $database).Length -gt 0){throw 'Read-only/paused tests captured a controller'}
     }
+    Set-Content ($database+'.hidhide-recovery.json') '{"schema":99}'
+    $reply=Request '{"protocolVersion":1,"id":"pending-recovery","command":"getState"}'
+    if(!$reply.ok -or $reply.payload.state -ne 'Error' -or !$reply.payload.recoveryPending){throw 'Pending recovery was reported as released'}
+    $reply=Request '{"protocolVersion":1,"id":"failed-recovery","command":"recover"}'
+    if($reply.ok -or !(Test-Path ($database+'.hidhide-recovery.json'))){throw 'Failed recovery lost its journal'}
+    Remove-Item -LiteralPath ($database+'.hidhide-recovery.json')
+    $reply=Request '{"protocolVersion":1,"id":"clear-recovery","command":"recover"}'
+    if(!$reply.ok -or $reply.payload.state -ne 'Paused'){throw 'Completed recovery did not release controller'}
     Write-Host 'Control protocol tests passed (mock HidHide, no hardware capture)'
 } finally {
     if($process -and !$process.HasExited){Stop-Process -Id $process.Id;$process.WaitForExit()}

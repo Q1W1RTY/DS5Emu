@@ -1,4 +1,4 @@
-function Invoke-DSEmu([ValidateSet('hello','getState','enable','pause','reconnect','disconnect','getDiagnostics')][string]$Command='getState') {
+﻿function Invoke-DSEmu([ValidateSet('hello','getState','enable','pause','reconnect','disconnect','getDiagnostics','recover','selectController')][string]$Command='getState') {
  $pipe=[IO.Pipes.NamedPipeClientStream]::new('.','DSEmu.Control.v1',[IO.Pipes.PipeDirection]::InOut,[IO.Pipes.PipeOptions]::Asynchronous)
  try {
   $pipe.Connect(4000)

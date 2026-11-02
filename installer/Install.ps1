@@ -1,18 +1,27 @@
-[CmdletBinding()]
-param([string]$OwnerSid,[switch]$InstallerMode)
+﻿[CmdletBinding()]
+param([string]$OwnerSid,[switch]$InstallerMode,[string]$InstallDir,[switch]$ValidateOnly,[switch]$RebootRequired)
 $ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+. (Join-Path $PSScriptRoot 'InstallPaths.ps1')
+$install=Resolve-DS5InstallPath $InstallDir
+if($ValidateOnly){Assert-DS5InstallTarget $install;Write-Output $install;exit 0}
 if(!$OwnerSid){$OwnerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value}
 $null=[Security.Principal.SecurityIdentifier]::new($OwnerSid)
 $admin=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if(!$admin){
  $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$PSCommandPath+'"'),'-OwnerSid',$OwnerSid)
+ $arguments+=@('-InstallDir',('"'+$install+'"'))
  if($InstallerMode){$arguments+='-InstallerMode'}
+ if($RebootRequired){$arguments+='-RebootRequired'}
  $child=Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -ArgumentList $arguments -Wait -PassThru
  if($child.ExitCode -notin @(0,3010)){throw "Installation failed: $($child.ExitCode). See %ProgramData%\DSEmu\setup.log"}
  if($InstallerMode){exit $child.ExitCode}
  Write-Host 'DSEmu installed. Open DSEmu from the Start menu.';exit 0
 }
-$install=Join-Path $env:ProgramFiles 'DSEmu'
+Assert-DS5InstallTarget $install
+$transactionLock=[Threading.Mutex]::new($false,'Global\DSEmu.Install.Transaction')
+try{$ownsTransaction=$transactionLock.WaitOne(0)}catch [Threading.AbandonedMutexException]{$ownsTransaction=$true}
+if(!$ownsTransaction){throw 'Another DS5Emu installation or removal is running.'}
 $data=Join-Path $env:ProgramData 'DSEmu'
 $serviceName='DSEmuBridge'
 if([int](Get-CimInstance Win32_OperatingSystem).BuildNumber -lt 22000){throw 'DSEmu v1 requires Windows 11.'}
@@ -40,29 +49,45 @@ function Verify-Package([string]$Path,[string]$Expected) {
  if(!(Test-Path -LiteralPath $Path) -or (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -ne $Expected){throw "Package hash mismatch: $Path"}
  if((Get-AuthenticodeSignature -LiteralPath $Path).Status -ne 'Valid'){throw "Package signature invalid: $Path"}
 }
+$requiresReboot=[bool]$RebootRequired
 $dependencies=Get-Content (Join-Path $PSScriptRoot 'dependencies.json') -Raw | ConvertFrom-Json
+. (Join-Path $PSScriptRoot 'Dependencies.ps1')
 foreach($dependency in $dependencies){
- $dependencyPath=if($dependency.name -eq 'usbip-win2'){"$env:ProgramFiles\USBip\usbip.exe"}else{"$env:ProgramFiles\Nefarius Software Solutions\HidHide\x64\HidHideCLI.exe"}
- $present=Test-Path $dependencyPath
- if($present){$version=(Get-Item -LiteralPath $dependencyPath).VersionInfo.FileVersion;if($version -notmatch ('^'+[regex]::Escape($dependency.version)+'(?:\D|$)')){throw "Unsupported installed version of $($dependency.name): $version. Shared drivers were not changed."}}
- if(!$present){
-  $package=Join-Path $PSScriptRoot ('dependencies\'+$dependency.file);Verify-Package $package $dependency.sha256
-  $arguments=if($dependency.name -eq 'usbip-win2'){@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/RESTARTEXITCODE=3010')}else{@('/quiet','/norestart')}
-  $result=Start-Process $package -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
-  if($result.ExitCode -notin @(0,3010)){throw "Dependency installation failed: $($dependency.name), $($result.ExitCode)"}
-  if($result.ExitCode -eq 3010){Set-Content (Join-Path $data 'reboot-required.txt') 'Restart Windows before hardware acceptance.'}
- }
+ $code=Install-DS5Dependency $dependency
+ if($code -eq 3010){$requiresReboot=$true;Set-Content (Join-Path $data 'reboot-required.txt') 'Restart Windows before hardware acceptance.'}
+}
+if($requiresReboot){Set-Content (Join-Path $data 'reboot-required.txt') 'Restart Windows before hardware acceptance.'}
+elseif(Test-Path (Join-Path $data 'reboot-required.txt')){Remove-Item -LiteralPath (Join-Path $data 'reboot-required.txt')}
+$registrationBefore=@{}
+$shortcutBefore=@{}
+foreach($name in @('DS5Emu.lnk','DSEmu.lnk')){
+ $path=Join-Path ([Environment]::GetFolderPath('CommonPrograms')) $name
+ $shortcutBefore[$path]=if(Test-Path -LiteralPath $path){[IO.File]::ReadAllBytes($path)}else{$null}
+}
+$runBefore='Registry::HKEY_USERS\'+$OwnerSid+'\Software\Microsoft\Windows\CurrentVersion\Run'
+$startupBefore=(Get-ItemProperty $runBefore -Name DSEmu -ErrorAction SilentlyContinue).DSEmu
+foreach($key in @('HKLM:\SOFTWARE\DSEmu','HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu')){
+ $values=@{}
+ if(Test-Path $key){$native=Get-Item $key;foreach($name in $native.GetValueNames()){$values[$name]=@{Value=$native.GetValue($name);Kind=$native.GetValueKind($name)}}}
+ $registrationBefore[$key]=$values
 }
 $stamp=[Guid]::NewGuid().ToString('N')
-$stage=Join-Path $env:ProgramFiles ('DSEmu.stage-'+$stamp)
-$backup=Join-Path $env:ProgramFiles ('DSEmu.backup-'+$stamp)
+$installParent=[IO.Path]::GetDirectoryName($install)
+$installName=[IO.Path]::GetFileName($install)
+# Create only missing parents, with the same protected ACL as the installation.
+$missingParents=@();$cursor=$installParent
+while(!(Test-Path -LiteralPath $cursor)){$missingParents+=,$cursor;$cursor=[IO.Path]::GetDirectoryName($cursor)}
+for($i=$missingParents.Count-1;$i -ge 0;$i--){Set-ProtectedDirectory $missingParents[$i]}
+$stage=Join-Path $installParent ($installName+'.stage-'+$stamp)
+$backup=Join-Path $installParent ($installName+'.backup-'+$stamp)
 foreach($path in @($install,$stage,$backup)){
- if([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($path)) -ne [IO.Path]::GetFullPath($env:ProgramFiles)){throw 'Unexpected application destination'}
- if((Test-Path $path) -and ((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Application destination is a reparse point'}
+ if([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($path)) -ne $installParent){throw 'Unexpected application destination'}
+ if((Test-Path -LiteralPath $path) -and ((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Application destination is a reparse point'}
 }
 function Move-OwnedDirectory([string]$Source,[string]$Destination) {
  foreach($path in @($Source,$Destination)){
-  if([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($path)) -ne [IO.Path]::GetFullPath($env:ProgramFiles)){throw 'Unexpected move destination'}
+  if([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($path)) -ne $installParent){throw 'Unexpected move destination'}
+  if($path -ne $install -and [IO.Path]::GetFileName($path) -notmatch ('^'+[regex]::Escape($installName)+'\.(stage|backup|failed)-[a-f0-9]{32}$')){throw 'Unexpected owned move path'}
   if((Test-Path -LiteralPath $path) -and ((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Move path is a reparse point'}
  }
  $deadline=[DateTime]::UtcNow.AddSeconds(10)
@@ -74,7 +99,9 @@ function Move-OwnedDirectory([string]$Source,[string]$Destination) {
 Set-ProtectedDirectory $stage
 Copy-Item (Join-Path $PSScriptRoot 'app\*') $stage -Recurse -Force
 Copy-Item (Join-Path $PSScriptRoot 'Uninstall.ps1') $stage
-$wasInstalled=Test-Path $install
+Copy-Item (Join-Path $PSScriptRoot 'InstallPaths.ps1') $stage
+$destinationExisted=Test-Path -LiteralPath $install
+$wasInstalled=[bool](Get-DS5RegisteredInstall)
 $swapped=$false
 try{
  if($existing){
@@ -87,7 +114,7 @@ try{
  foreach($uiProcess in @(Get-Process DSEmu,DS5Emu -ErrorAction SilentlyContinue | Where-Object {$_.Path -and $_.Path.StartsWith($install+'\',[StringComparison]::OrdinalIgnoreCase)})){
   try{Stop-Process -InputObject $uiProcess -Force;if(!$uiProcess.WaitForExit(15000)){throw 'UI process did not release its files'}}finally{$uiProcess.Dispose()}
  }
- if($wasInstalled){Move-OwnedDirectory $install $backup}
+ if($destinationExisted){Move-OwnedDirectory $install $backup}
  Move-OwnedDirectory $stage $install;$swapped=$true
  Set-ProtectedDirectory $install
  if(!$wasInstalled){Set-Content (Join-Path $data 'bridge.db.paused') 'paused'}
@@ -103,7 +130,8 @@ try{
  & sc.exe description $serviceName 'Local DualSense Bluetooth to virtual USB bridge' | Out-Null
  & sc.exe failure $serviceName reset= 86400 actions= 'restart/5000/restart/15000/restart/60000' | Out-Null
  $ownerKey=[Microsoft.Win32.Registry]::LocalMachine.CreateSubKey('SOFTWARE\DSEmu',$true)
- try{$ownerKey.SetValue('OwnerSid',$OwnerSid,[Microsoft.Win32.RegistryValueKind]::String)}finally{$ownerKey.Close()}
+ try{$ownerKey.SetValue('OwnerSid',$OwnerSid,[Microsoft.Win32.RegistryValueKind]::String);$ownerKey.SetValue('InstallLocation',$install,[Microsoft.Win32.RegistryValueKind]::String)}finally{$ownerKey.Close()}
+ if(!$requiresReboot){
  Start-Service $serviceName
  (Get-Service $serviceName).WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
  # A running SCM process alone does not prove that its control endpoint is usable.
@@ -119,10 +147,11 @@ try{
   $reply=$replyTask.Result|ConvertFrom-Json
   if(!$reply.ok -or $reply.id -ne $id -or $reply.protocolVersion -ne 1){throw 'DSEmu control endpoint returned an invalid response'}
  }finally{$pipe.Dispose()}
+ }
  $uninstallKey='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu'
  $uninstallNative=[Microsoft.Win32.Registry]::LocalMachine.CreateSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu',$true)
  try{
-  $uninstallNative.SetValue('DisplayName','DS5Emu');$uninstallNative.SetValue('DisplayVersion','0.1.3');$uninstallNative.SetValue('InstallLocation',$install)
+  $uninstallNative.SetValue('DisplayName','DS5Emu');$uninstallNative.SetValue('DisplayVersion',([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $install 'DS5Emu.exe')).ProductVersion -split '\+')[0]);$uninstallNative.SetValue('InstallLocation',$install)
   $uninstallNative.SetValue('DisplayIcon',(Join-Path $install 'DS5Emu.exe')+',0')
   $uninstallNative.SetValue('UninstallString',('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $install 'Uninstall.ps1')+'"'))
  }finally{$uninstallNative.Close()}
@@ -147,12 +176,25 @@ try{
 }catch{
  $failure=$_
  Stop-Service $serviceName -ErrorAction SilentlyContinue
- if($swapped -and (Test-Path $install)){
-  $failed=Join-Path $env:ProgramFiles ('DSEmu.failed-'+$stamp);Move-OwnedDirectory $install $failed
+ $stopped=Get-Service $serviceName -ErrorAction SilentlyContinue
+ if($stopped){$stopped.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))}
+ if($swapped -and (Test-Path -LiteralPath $install)){
+  $failed=Join-Path $installParent ($installName+'.failed-'+$stamp);Move-OwnedDirectory $install $failed
  }
- if(Test-Path $backup){Move-OwnedDirectory $backup $install;if($existing){Start-Service $serviceName -ErrorAction SilentlyContinue}}
+ if(Test-Path -LiteralPath $backup){Move-OwnedDirectory $backup $install}
  if(!$existing){& sc.exe delete $serviceName | Out-Null;Remove-Item $registry -Recurse -ErrorAction SilentlyContinue}
- else {Invoke-CimMethod -InputObject $existing -MethodName Change -Arguments @{PathName=$existing.PathName} | Out-Null}
+ else {Invoke-CimMethod -InputObject $existing -MethodName Change -Arguments @{PathName=$existing.PathName;StartMode=$(if($existing.StartMode -eq 'Auto'){'Automatic'}else{$existing.StartMode});DisplayName=$existing.DisplayName} | Out-Null;if($existing.State -eq 'Running'){Start-Service $serviceName -ErrorAction SilentlyContinue}}
+ foreach($key in $registrationBefore.Keys){
+  $values=$registrationBefore[$key]
+  if(Test-Path $key){$native=Get-Item $key;foreach($name in $native.GetValueNames()){if(!$values.ContainsKey($name)){Remove-ItemProperty -LiteralPath $key -Name $name}}}
+  if(!$values.Count -and (Test-Path $key) -and !(Get-Item $key).SubKeyCount){Remove-Item -LiteralPath $key}
+  if($values.Count){New-Item -Path $key -Force|Out-Null;foreach($name in $values.Keys){New-ItemProperty -LiteralPath $key -Name $name -Value $values[$name].Value -PropertyType $values[$name].Kind -Force|Out-Null}}
+ }
+ foreach($path in $shortcutBefore.Keys){
+  if($null -ne $shortcutBefore[$path]){[IO.File]::WriteAllBytes($path,$shortcutBefore[$path])}
+  elseif(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Force}
+ }
+ if(Test-Path $runBefore){if($null -ne $startupBefore){Set-ItemProperty $runBefore -Name DSEmu -Value $startupBefore}else{Remove-ItemProperty $runBefore -Name DSEmu -ErrorAction SilentlyContinue}}
  throw $failure
 }
 if($InstallerMode){

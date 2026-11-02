@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$OutputDirectory)
+﻿param([Parameter(Mandatory)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'qa-common.ps1')
 $result=Join-Path $OutputDirectory 'service-crash.json'
@@ -10,7 +10,7 @@ try {
  if(@($baseline|Where-Object Class -eq 'USB').Count -ne 1 -or @($baseline|Where-Object Class -eq 'AudioEndpoint').Count -ne 2){throw 'Unexpected baseline virtual topology'}
  $service=Get-CimInstance Win32_Service -Filter "Name='DSEmuBridge'"
  $process=Get-CimInstance Win32_Process -Filter "ProcessId=$($service.ProcessId)"
- $expected=Join-Path $env:ProgramFiles 'DSEmu\engine\vdsd.exe'
+ $expected=Join-Path ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu').InstallLocation) 'engine\vdsd.exe'
  if($service.State -ne 'Running' -or $process.ExecutablePath -ne $expected -or $process.SessionId -ne 0){throw 'Unexpected service process; nothing terminated'}
  $oldId=$service.ProcessId
  $journal=Join-Path $env:ProgramData 'DSEmu\bridge.db.hidhide-recovery.json'

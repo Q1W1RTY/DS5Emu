@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.IO.Pipes;
 using System.Text;
@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 namespace DSEmu;
 internal sealed record BridgeState {
  public string State {get;init;}="Waiting";
+ public string Mode {get;init;}="ps5";
  public bool Enabled {get;init;}
  public bool BluetoothDisconnected {get;init;}
  public string Transport {get;init;}="Bluetooth";

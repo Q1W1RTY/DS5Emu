@@ -1,4 +1,4 @@
-# Сборка
+﻿# Сборка
 
 Нужны Windows 11 x64, Git, Visual Studio 2022 Build Tools (C++ x64, CMake, Ninja, Windows SDK) и .NET SDK из global.json. Использованные версии: MSVC 14.44, SDK 10.0.26100, .NET SDK 10.0.403.
 
@@ -32,3 +32,15 @@ EXE-мастер собирается через scripts/build-setup.ps1. У т�
 scripts/test.ps1 запускает CTest и managed-сценарии протокола и диагностики. Аппаратные QA-скрипты находятся в scripts/qa-*.ps1; они могут переподключать контроллер или переустанавливать приложение, поэтому их следует запускать отдельно на тестовой машине.
 
 Локальные журналы, пакеты, конфигурация контроллера и история аппаратных прогонов исключены из Git.
+
+## Кандидат после ревью
+
+Версия задаётся в VERSION. scripts/test.ps1 включает 9 native-групп, 7 managed-сценариев и 36 UI layout/state-сценариев с синтетическими областями просмотра. Повышенный scripts/qa-install-path.ps1 использует отдельную службу, pipe, реестр и защищённую папку с пробелами/кириллицей/скобками; TestDrive задаёт локальный диск. Настоящие драйверы fixture не устанавливает. scripts/qa-cleanup-fixtures.ps1 удаляет его проверенные собственные каталоги, сохраняя отчёты.
+
+Для тестового EXE с изменённым native: scripts/build-setup.ps1 -CandidateNativeDirectory <artifacts/native-Release>. Метаданные сохраняют candidate=true и hardwareAccepted=false; это не снимает защиту принятого native-хеша в обычном профиле. qa-setup проверяет выбранный режим и хеши. Принятие нового native и публикация требуют отдельного решения после аппаратной проверки.
+
+Для Xbox используется исходный ViGEmClient из third_party/ViGEmClient (ревизия и лицензия указаны рядом). scripts/test-dependencies.ps1 проверяет обнаружение драйверов на подставном инвентаре; qa-setup.ps1 дополнительно запускает настоящий отчёт Dependencies.ps1 через Windows PowerShell 5.1.
+
+Пример сборки кандидата 0.1.6 с сохранённым базовым пакетом: `scripts/build-setup.ps1 -PackageDirectory artifacts/packages/DSEmu-0.1.0-20261101-064430 -CandidateNativeDirectory artifacts/native-Release`. Пакеты драйверов берутся из последнего комплекта, созданного package.ps1; исходные скрипты мастера — из installer.
+
+Оформление EXE-мастера находится в installer/SetupStyle.cs; bootstrap компилируется вместе с installer/Setup.cs. Опубликованные сборки с новым движком сохраняют candidate=true и hardwareAccepted=false до завершения физической приёмки.

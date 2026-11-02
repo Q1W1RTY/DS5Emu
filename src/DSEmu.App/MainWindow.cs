@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -46,6 +46,8 @@ internal sealed partial class MainWindow : Window {
     public MainWindow(bool preview) {
         this.preview = preview;
         InitializeComponent();
+        VersionText.Text = "v" + typeof(MainWindow).Assembly.GetName().Version?.ToString(3);
+        MaxHeight = SystemParameters.WorkArea.Height;
 
         AddMetric(ConnectionMetrics, "Пакеты / с");
         AddMetric(ConnectionMetrics, "Паузы > 10 мс");
@@ -57,9 +59,13 @@ internal sealed partial class MainWindow : Window {
         AddMetric(AudioMetrics, "RSSI");
 
         SourceInitialized += (_, _) => {
+            HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(HeaderHitTest);
+            UpdateWorkArea();
+            HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook((IntPtr hwnd, int message, IntPtr wparam, IntPtr lparam, ref bool handled) => { if(message==0x02E0) Dispatcher.BeginInvoke(new Action(UpdateWorkArea)); return IntPtr.Zero; });
             int dark = 1;
             _ = DwmSetWindowAttribute(new WindowInteropHelper(this).Handle, 20, ref dark, sizeof(int));
         };
+        LocationChanged += (_, _) => UpdateWorkArea();
         KeyDown += (_, e) => {
             if (e.Key == Key.F12) {
                 SetDiagnosticsOpen(!diagnosticsOpen);
@@ -90,7 +96,7 @@ internal sealed partial class MainWindow : Window {
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Открыть окно", null, (_, _) => Open());
-        menu.Items.Add("Включить / выключить эмуляцию PS5", null, async (_, _) => await Command(current.Enabled ? "pause" : "enable"));
+        menu.Items.Add("Включить / выключить эмуляцию", null, async (_, _) => await Command(current.Enabled ? "pause" : "enable"));
         menu.Items.Add("Переподключить", null, async (_, _) => await Command("reconnect"));
         menu.Items.Add("Отключить геймпад", null, async (_, _) => await Command("disconnect"));
         startupMenu = new Forms.ToolStripMenuItem("Автозапуск") { Checked = StartupSwitch.IsChecked == true, CheckOnClick = true };
@@ -142,8 +148,10 @@ internal sealed partial class MainWindow : Window {
 
         StatusDot.Fill = dotBrush;
         BadgeText.Text = state.State switch {
-            "Active" => $"Bluetooth · {(state.MaxGapMs > 0 ? state.MaxGapMs.ToString("F1") : "1.2")} мс",
+            "Active" => "Bluetooth",
             "Connecting" => "Подключение…",
+            "Wired" => "USB",
+            "Conflict" => "Занят DSX",
             "Stopping" => "Отключение…",
             "Error" => state.Error.StartsWith("Нет связи") ? "Нет связи" : "Сбой",
             _ => state.BluetoothDisconnected ? "Отключён" : "Ожидание"
@@ -164,7 +172,7 @@ internal sealed partial class MainWindow : Window {
         // Battery Widget
         BatteryText.Text = state.BatteryPercent is int battery ? $"{battery}%" : "—";
         BatteryText.ToolTip = "Приблизительный уровень по данным контроллера";
-        var charge = Math.Clamp(state.BatteryPercent ?? (state.State == "Active" ? 85 : 0), 0, 100);
+        var charge = Math.Clamp(state.BatteryPercent ?? 0, 0, 100);
         BatteryFilled.Width = new GridLength(charge, GridUnitType.Star);
         BatteryEmpty.Width = new GridLength(100 - charge, GridUnitType.Star);
         BatteryFill.Background = (state.BatteryPercent is <= 20) ? AmberBrush : GreenBrush;
@@ -181,22 +189,28 @@ internal sealed partial class MainWindow : Window {
         }
 
         // Emulation state
-        bool emuActive = state.Enabled && state.State != "Paused";
+        bool emuActive = state.Enabled;
         MainEmuSwitch.IsChecked = emuActive;
         if (emuActive) {
             EmuBadge.Background = BlueBrush;
             EmuBadgeGlow.Color = Color.FromRgb(10, 132, 255);
             EmuBadgeGlow.Opacity = 0.4;
-            EmuTitle.Text = "Эмуляция включена";
-            EmuSubtitle.Text = "Виртуальный USB-контроллер · PS5";
-            ToggleButton.Content = "Выключить эмуляцию PS5";
-            SetSegmentSelection(1);
+            EmuTitle.Text = state.State switch {
+                "Active" => "Эмуляция включена",
+                "Wired" or "Conflict" => "Эмуляция приостановлена",
+                "Error" => "Эмуляция недоступна",
+                "Connecting" or "Stopping" => "Переключение эмуляции…",
+                _ => "Ожидание контроллера"
+            };
+            EmuSubtitle.Text = state.State == "Active" ? (state.Mode == "xbox" ? "Xbox 360 · XInput" : "Виртуальный USB-контроллер · PS5") : name;
+            ToggleButton.Content = "Выключить эмуляцию";
+            SetSegmentSelection(state.Mode == "xbox" ? 2 : 1);
         } else {
             EmuBadge.Background = new SolidColorBrush(Color.FromArgb(35, 255, 255, 255));
             EmuBadgeGlow.Opacity = 0;
             EmuTitle.Text = "Эмуляция выключена";
             EmuSubtitle.Text = "Прямой Bluetooth-ввод без эмуляции";
-            ToggleButton.Content = "Включить эмуляцию PS5";
+            ToggleButton.Content = "Включить эмуляцию";
             SetSegmentSelection(0);
         }
 
@@ -251,13 +265,10 @@ internal sealed partial class MainWindow : Window {
     }
 
     void SetSegmentSelection(int index) {
-        if (index == 0) {
-            SegmentOff.Style = (Style)FindResource("SegmentButtonActive");
-            SegmentPS5.Style = (Style)FindResource("SegmentButton");
-        } else if (index == 1) {
-            SegmentOff.Style = (Style)FindResource("SegmentButton");
-            SegmentPS5.Style = (Style)FindResource("SegmentButtonActive");
-        }
+        SegmentOff.Style = (Style)FindResource(index == 0 ? "SegmentButtonActive" : "SegmentButton");
+        SegmentPS5.Style = (Style)FindResource(index == 1 ? "SegmentButtonActive" : "SegmentButton");
+        SegmentXInput.Style = (Style)FindResource(index == 2 ? "SegmentButtonActive" : "SegmentButton");
+        SegmentOff.IsEnabled = SegmentPS5.IsEnabled = SegmentXInput.IsEnabled = !commanding && current.State != "Stopping";
     }
 
     internal void SetDiagnosticsOpen(bool open) {
@@ -298,7 +309,8 @@ internal sealed partial class MainWindow : Window {
         if (message.Contains("Enabling HidHide would affect")) return "В HidHide настроены другие устройства. Подробности в диагностике.";
         if (message.Contains("inverse mode")) return "В HidHide включён обратный режим.";
         if (message.Contains("recovery deferred")) return "Проверьте восстановление в диагностике.";
-        if (message == "BRIDGE_PAUSED") return "Сначала включите эмуляцию PS5.";
+        if (message.Contains("ViGEmBus")) return "Для Xbox нужен ViGEmBus. Установите его через установщик DS5Emu.";
+        if (message == "BRIDGE_PAUSED") return "Сначала включите эмуляцию.";
         if (message == "BLUETOOTH_DISCONNECT_PENDING") return "Дождитесь отключения Bluetooth.";
         if (message == "CONTROLLER_BUSY") return "Контроллер подключён по USB или используется DSX.";
         if (message == "CONTROLLER_NOT_CONFIGURED") return "Сначала подключите один DualSense по Bluetooth.";
@@ -330,6 +342,20 @@ internal sealed partial class MainWindow : Window {
         } finally {
             DestroyIcon(handle);
         }
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct NativeRect { public int Left,Top,Right,Bottom; }
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct MonitorInfo { public int Size; public NativeRect Monitor,Work; public uint Flags; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern IntPtr MonitorFromWindow(IntPtr hwnd,uint flags);
+    [System.Runtime.InteropServices.DllImport("user32.dll",CharSet=System.Runtime.InteropServices.CharSet.Auto)]
+    static extern bool GetMonitorInfo(IntPtr monitor,ref MonitorInfo info);
+    void UpdateWorkArea() {
+        var hwnd=new WindowInteropHelper(this).Handle;if(hwnd==IntPtr.Zero)return;
+        var info=new MonitorInfo { Size=System.Runtime.InteropServices.Marshal.SizeOf<MonitorInfo>() };
+        if(GetMonitorInfo(MonitorFromWindow(hwnd,2),ref info))MaxHeight=Math.Max(1,(info.Work.Bottom-info.Work.Top)/VisualTreeHelper.GetDpi(this).DpiScaleY);
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -366,14 +392,14 @@ internal sealed partial class MainWindow : Window {
         footerResetTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.4) };
         footerResetTimer.Tick += (_, _) => {
             footerResetTimer.Stop();
-            FooterStatus.Text = "Драйвер ViGEmBus готов";
+            FooterStatus.Text = "DS5Emu";
             FooterStatus.Foreground = new SolidColorBrush(Color.FromArgb(102, 255, 255, 255));
         };
         footerResetTimer.Start();
     }
 
     async Task Initialize() {
-        await Command("enable");
+        await Refresh();
         timer.Start();
     }
 
@@ -438,7 +464,7 @@ internal sealed partial class MainWindow : Window {
             if (!released) throw new IOException("Служба не подтвердила освобождение контроллера.");
         } catch (Exception e) {
             if (!ServiceState.StoppedOrMissing()) {
-                Notice("Не удалось выключить эмуляцию PS5: " + e.Message);
+                Notice("Не удалось выключить эмуляцию: " + e.Message);
                 return;
             }
         }
@@ -468,7 +494,7 @@ internal sealed partial class MainWindow : Window {
                 var entry = zip.CreateEntry("status.json");
                 using var writer = new StreamWriter(entry.Open());
                 var sanitized = state with { Error = Diagnostics.Mask(state.Error), LogLines = state.LogLines.Select(Diagnostics.Mask).ToArray() };
-                writer.Write(JsonSerializer.Serialize(new { appVersion = "0.1.0", windows = Environment.OSVersion.VersionString, state = sanitized }, BridgeClient.JsonOptions));
+                writer.Write(JsonSerializer.Serialize(new { appVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString(), windows = Environment.OSVersion.VersionString, state = sanitized }, BridgeClient.JsonOptions));
             }
             Notice("Сохранено: " + Path.GetFileName(path));
             SetFooterMessage("Диагностика сохранена");
@@ -481,8 +507,17 @@ internal sealed partial class MainWindow : Window {
     }
 
     // Window controls & dragging
-    void Window_MouseDown(object sender, MouseButtonEventArgs e) {
-        if (e.LeftButton == MouseButtonState.Pressed) DragMove();
+    IntPtr HeaderHitTest(IntPtr hwnd, int message, IntPtr wparam, IntPtr lparam, ref bool handled) {
+        if(message!=0x0084 || !DragHeader.IsVisible)return IntPtr.Zero;
+        long packed=lparam.ToInt64();
+        var point=DragHeader.PointFromScreen(new System.Windows.Point((short)(packed&0xffff),(short)((packed>>16)&0xffff)));
+        if(!new Rect(new System.Windows.Point(),DragHeader.RenderSize).Contains(point))return IntPtr.Zero;
+        for(var source=DragHeader.InputHitTest(point) as DependencyObject; source!=null; source=source is Visual ? VisualTreeHelper.GetParent(source) : LogicalTreeHelper.GetParent(source)) {
+            if(source is System.Windows.Controls.Primitives.ButtonBase)return IntPtr.Zero;
+            if(ReferenceEquals(source,DragHeader))break;
+        }
+        handled=true;
+        return new IntPtr(2); // HTCAPTION: native dragging, independent of ScrollViewer routing.
     }
     void MinimizeWindow(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     void CloseWindow(object sender, RoutedEventArgs e) => Hide();
@@ -490,7 +525,8 @@ internal sealed partial class MainWindow : Window {
     // Emulation controls
     async void MainEmuSwitch_Click(object sender, RoutedEventArgs e) => await Command(current.Enabled ? "pause" : "enable");
     async void SelectSegment_Off(object sender, RoutedEventArgs e) { if (current.Enabled) await Command("pause"); }
-    async void SelectSegment_PS5(object sender, RoutedEventArgs e) { if (!current.Enabled) await Command("enable"); }
+    async void SelectSegment_PS5(object sender, RoutedEventArgs e) { if (!current.Enabled || current.Mode != "ps5") await Command("enablePS5"); }
+    async void SelectSegment_Xbox(object sender, RoutedEventArgs e) { if (!current.Enabled || current.Mode != "xbox") await Command("enableXbox"); }
     async void ToggleBridge(object sender, RoutedEventArgs e) => await Command(current.Enabled ? "pause" : "enable");
 
     // Quick Actions
@@ -524,6 +560,10 @@ internal sealed partial class MainWindow : Window {
         }
     }
 
+    async void RecoverController(object sender, RoutedEventArgs e) => await Command("recover");
+    async void SelectController(object sender, RoutedEventArgs e) {
+        if (System.Windows.MessageBox.Show("Сначала выключите эмуляцию и подключите только тот DualSense, который хотите использовать. Сохранить его вместо прежнего?", "Сменить контроллер", MessageBoxButton.YesNo) == MessageBoxResult.Yes) await Command("selectController");
+    }
     void ToggleAdvanced(object sender, RoutedEventArgs e) => SetDiagnosticsOpen(!diagnosticsOpen);
     async void SaveDiagnostics(object sender, RoutedEventArgs e) => await ExportDiagnostics();
     async void ExitApplication(object sender, RoutedEventArgs e) => await Exit();

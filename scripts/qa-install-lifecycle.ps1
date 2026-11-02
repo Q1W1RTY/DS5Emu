@@ -1,4 +1,4 @@
-param(
+﻿param(
  [Parameter(Mandatory)][string]$PackageDirectory,
  [Parameter(Mandatory)][string]$OwnerSid,
  [Parameter(Mandatory)][string]$OutputDirectory
@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'qa-common.ps1')
 $root=Split-Path $PSScriptRoot -Parent
-$install=[IO.Path]::GetFullPath((Join-Path $env:ProgramFiles 'DSEmu'))
+$install=[IO.Path]::GetFullPath(((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu').InstallLocation))
 $data=Join-Path $env:ProgramData 'DSEmu'
 $result=Join-Path $OutputDirectory 'install-lifecycle.json'
 $phases=@();$restoreError=$null;$completed=$false
@@ -80,7 +80,7 @@ try {
  if((Get-FileHash (Join-Path $install 'engine\vdsd.exe')).Hash -ne $expectedNative){throw 'Rollback did not restore the installed engine'}
  $phases+=[pscustomobject]@{phase='rollback-after-swap';ok=$true;failure=$rejection;engineRestored=$true;serviceRunning=$true};Save-Result
 
- Invoke-Setup (Join-Path $PackageDirectory 'Uninstall.ps1') 'uninstall'
+ Invoke-Setup (Join-Path $install 'Uninstall.ps1') 'uninstall'
  $until=[DateTime]::UtcNow.AddSeconds(15)
  do{$remaining=Get-Service DSEmuBridge -ErrorAction SilentlyContinue;if(!$remaining){break};Start-Sleep -Milliseconds 300}while([DateTime]::UtcNow -lt $until)
  if($remaining -or (Test-Path -LiteralPath $install)){throw 'Uninstall retained service or application directory'}
