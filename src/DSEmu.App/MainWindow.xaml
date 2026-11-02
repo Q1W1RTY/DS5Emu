@@ -718,7 +718,7 @@
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
-                                            <TextBlock Text="Полный журнал — в диагностическом ZIP" FontSize="10" Foreground="#55FFFFFF" Margin="0,3,0,4"/>
+                                            <TextBlock Text="Подробный журнал — в диагностическом ZIP" FontSize="10" Foreground="#55FFFFFF" Margin="0,3,0,4"/>
                                             <Grid Margin="0,8,0,0">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>

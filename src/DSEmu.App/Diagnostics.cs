@@ -35,6 +35,11 @@ internal static class Diagnostics {
   text=Regex.Replace(text,@"(?i)([0-9a-f]{2}:){5}[0-9a-f]{2}","<device>");
   text=Regex.Replace(text,@"(?i)\b[0-9a-f]{12}\b","<device>");
   text=Regex.Replace(text,@"(?i)(?:HID|BTHENUM|USB)[\\#][^\s""|]+","<device-path>");
+  text=Regex.Replace(text,@"(?i)S-\d(?:-\d+){2,}","<sid>");
+  text=Regex.Replace(text,@"(?im)^(Имя пользователя|Запуск от имени пользователя|Компьютер|Username|RunAs User|Machine)\s*:.*$","$1: <redacted>");
+  text=Regex.Replace(text,@"(?i)[a-z]:\\Users\\[^\\\r\n""']+","<user>");
+  var account=Environment.UserDomainName+"\\"+Environment.UserName;
+  text=text.Replace(account,"<account>",StringComparison.OrdinalIgnoreCase);
   return text.Replace(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),"<user>",StringComparison.OrdinalIgnoreCase);
  }
 }

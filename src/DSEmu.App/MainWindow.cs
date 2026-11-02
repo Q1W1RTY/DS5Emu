@@ -483,21 +483,12 @@ internal sealed partial class MainWindow : Window {
         exporting = true;
         ExportButton.IsEnabled = false;
         try {
-            BridgeState state;
-            try {
-                state = await BridgeClient.SendAsync("getDiagnostics");
-            } catch (Exception) {
-                state = current with { Error = "Служба недоступна при экспорте диагностики. " + current.Error, LogLines = diagnosticLines };
-            }
+            ExportButton.Content = "Собираем…";
             var folder = Path.Combine(Settings.DirectoryPath, "Diagnostics");
             Directory.CreateDirectory(folder);
             var path = Path.Combine(folder, "DS5Emu-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + ".zip");
-            using (var zip = ZipFile.Open(path, ZipArchiveMode.Create)) {
-                var entry = zip.CreateEntry("status.json");
-                using var writer = new StreamWriter(entry.Open());
-                var sanitized = state with { Error = Diagnostics.Mask(state.Error), LogLines = state.LogLines.Select(Diagnostics.Mask).ToArray() };
-                writer.Write(JsonSerializer.Serialize(new { appVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString(), windows = Environment.OSVersion.VersionString, state = sanitized }, BridgeClient.JsonOptions));
-            }
+            await DiagnosticArchive.SaveAsync(path, current with { LogLines = diagnosticLines },
+                () => BridgeClient.SendAsync("getDiagnostics"));
             Notice("Сохранено: " + Path.GetFileName(path));
             SetFooterMessage("Диагностика сохранена");
         } catch (Exception e) {
@@ -505,6 +496,7 @@ internal sealed partial class MainWindow : Window {
         } finally {
             exporting = false;
             ExportButton.IsEnabled = true;
+            ExportButton.Content = "Сохранить ZIP";
         }
     }
 
