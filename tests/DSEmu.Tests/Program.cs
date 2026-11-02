@@ -77,9 +77,20 @@ try {
  using var filtered=JsonDocument.Parse(WindowsDiagnostics.FilterEvents(xml));Check(filtered.RootElement.GetProperty("events").GetArrayLength()==1 && !filtered.RootElement.ToString().Contains("PRIVATE-PC") && !filtered.RootElement.ToString().Contains("Alice"),"Windows event filtering or privacy failed");
  Check(ServiceState.Read("DSEmu.NonexistentDiagnosticTest."+Guid.NewGuid().ToString("N")).Exists==false,"Missing service was not identified");
 }finally{foreach(var file in Directory.GetFiles(reportDirectory))File.Delete(file);Directory.Delete(reportDirectory);}
+var exitCommands=new List<string>();
+var release=await BridgeShutdown.AttemptAsync(command=>{exitCommands.Add(command);return Task.FromResult(new BridgeState {State=command=="pause"?"Stopping":"Paused"});},()=>false);
+Check(release.Released && exitCommands.SequenceEqual(new[]{"pause","getState"}),"Exit did not wait for controller release");
+var offlineExit=await BridgeShutdown.AttemptAsync(_=>Task.FromException<BridgeState>(new IOException("pipe down")),()=>false);
+Check(!offlineExit.Released && offlineExit.Error=="pipe down","Unavailable service must offer UI-only exit instead of claiming release");
+var stoppedExit=await BridgeShutdown.AttemptAsync(_=>Task.FromException<BridgeState>(new IOException("pipe down")),()=>true);
+Check(stoppedExit.Released,"Stopped service unnecessarily blocked UI exit");
+var pendingExit=await BridgeShutdown.AttemptAsync(_=>Task.FromResult(new BridgeState {State="Error",Error="HidHide recovery pending"}),()=>false);
+Check(!pendingExit.Released && pendingExit.Error=="HidHide recovery pending","Recovery failure was treated as controller release");
+var slowExit=await BridgeShutdown.AttemptAsync(_=>Task.FromResult(new BridgeState {State="Stopping"}),()=>false,TimeSpan.Zero);
+Check(!slowExit.Released,"Exit ignored release timeout");
 if(args.Length==2 && args[0]=="--diagnostic-smoke") {
  Directory.CreateDirectory(args[1]);var smoke=Path.Combine(args[1],"diagnostic-offline-smoke.zip");
  var result=await DiagnosticArchive.SaveAsync(smoke,new BridgeState {State="Error"},()=>BridgeClient.SendAsync("getDiagnostics","DSEmu.NonexistentProbe."+Guid.NewGuid().ToString("N")));
  Console.WriteLine("Live read-only diagnostic collection: "+result.Collected+" collected, "+result.Unavailable+" unavailable; IPC reachable="+result.BridgeReachable);
 }
-Console.WriteLine("24 managed protocol/diagnostic scenarios passed");
+Console.WriteLine("29 managed protocol/diagnostic scenarios passed");

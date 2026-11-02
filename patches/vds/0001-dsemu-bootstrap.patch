@@ -301,7 +301,7 @@ index 3fa717f..1a30011 100644
 +
  } // namespace vds::win
 diff --git a/src/platform/win32/vds_hidhide.cc b/src/platform/win32/vds_hidhide.cc
-index ba16e6b..b4bd5d4 100644
+index ba16e6b..cd86e6f 100644
 --- a/src/platform/win32/vds_hidhide.cc
 +++ b/src/platform/win32/vds_hidhide.cc
 @@ -12,6 +12,9 @@
@@ -323,7 +323,27 @@ index ba16e6b..b4bd5d4 100644
  constexpr std::wstring_view kDefaultCliRelativePath =
      LR"(Nefarius Software Solutions\HidHide\x64\HidHideCLI.exe)";
  
-@@ -282,8 +287,62 @@ bool device_is_hidden(std::string_view instance_path) {
+@@ -267,10 +272,19 @@ std::string run_cli(std::initializer_list<std::wstring> arguments) {
+     throw std::runtime_error("failed to read HidHideCLI exit code: " +
+                              win32_error_message(GetLastError()));
+   }
++  // Older CLI builds can print a Win32 failure while returning success.
++  // Never interpret that output as a configuration state.
++  const auto error_position=output.find("Error code 0x");
++  const bool reported_error=error_position!=std::string::npos && (error_position==0 || output[error_position-1]=='\n');
++  unsigned long reported_code=0;
++  if(reported_error){try{reported_code=std::stoul(output.substr(error_position+13),nullptr,16);}catch(const std::exception&) {}}
++  if(exit_code==ERROR_ACCESS_DENIED || (reported_error && reported_code==ERROR_ACCESS_DENIED))
++    throw std::runtime_error("HIDHIDE_ACCESS_DENIED: Close HidHide Configuration Client and retry; the driver control device may be in use");
+   if (exit_code != ERROR_SUCCESS) {
+     throw std::runtime_error("HidHideCLI failed with exit code " +
+                              std::to_string(exit_code));
+   }
++  if(reported_error)throw std::runtime_error("HidHideCLI reported an error: "+output.substr(error_position,512));
+   return output;
+ }
+ 
+@@ -282,8 +296,69 @@ bool device_is_hidden(std::string_view instance_path) {
    return output.find(needle) != std::string::npos;
  }
  
@@ -332,6 +352,13 @@ index ba16e6b..b4bd5d4 100644
 +  if (state.find("--cloak-on") != std::string::npos) return true;
 +  if (state.find("--cloak-off") != std::string::npos) return false;
 +  throw std::runtime_error("HidHide returned an unknown cloak state");
++}
++
++bool inverse_is_enabled() {
++  const auto state=run_cli({L"--inv-state"});
++  if(state.find("--inv-on")!=std::string::npos)return true;
++  if(state.find("--inv-off")!=std::string::npos)return false;
++  throw std::runtime_error("HidHide returned an unknown inverse state; configuration was not changed");
 +}
 +
 +bool daemon_is_registered() {
@@ -386,9 +413,21 @@ index ba16e6b..b4bd5d4 100644
  bool provider_available() {
    const std::wstring path = resolve_cli_path();
    return !path.empty() && regular_file_exists(path);
-@@ -308,27 +367,33 @@ void register_daemon() {
+@@ -307,28 +382,45 @@ void register_daemon() {
+   }
  }
  
++void normalize_inverse_mode() {
++  std::unique_lock<std::mutex> lease(lease_mutex,std::try_to_lock);
++  if(!lease.owns_lock())throw std::runtime_error("Pause emulation before HidHide repair");
++  if(!recovery_path.empty() && std::filesystem::exists(recovery_path))
++    throw std::runtime_error("Complete HidHide recovery before changing inverse mode");
++  if(!inverse_is_enabled())return;
++  // Do not change the device list, app list or global cloak state.
++  run_cli({L"--inv-off"});
++  if(inverse_is_enabled())throw std::runtime_error("HidHide did not disable inverse mode");
++}
++
  DeviceGuard::DeviceGuard(std::string instance_path, Logger &logger)
 -    : instance_path_(std::move(instance_path)), logger_(logger) {
 +    : instance_path_(std::move(instance_path)), logger_(logger),lease_(lease_mutex,std::try_to_lock) {
@@ -403,13 +442,13 @@ index ba16e6b..b4bd5d4 100644
 -    run_cli({L"--dev-hide", utf16_from_utf8(instance_path_)});
 -    hide_added_ = true;
 +  if(!recovery_path.empty() && std::filesystem::exists(recovery_path))recover_changes();
-+  if (run_cli({L"--inv-state"}).find("--inv-off") == std::string::npos) {
++  if (inverse_is_enabled()) {
 +    throw std::runtime_error("HidHide inverse mode is incompatible; configuration was not changed");
-   }
++  }
 +  const bool was_enabled = cloak_is_enabled();
 +  if (!was_enabled && contains_other_hidden_device(instance_path_)) {
 +    throw std::runtime_error("Enabling HidHide would affect other configured devices; configuration was not changed");
-+  }
+   }
 +  hide_added_=!device_is_hidden(instance_path_);
 +  cloak_enabled_=!was_enabled;
 +  write_journal({{"schema",1},{"device",instance_path_},{"daemon",utf8_from_utf16(executable_path())},{"hideAdded",hide_added_},{"cloakEnabled",cloak_enabled_},{"appAdded",!daemon_is_registered()}});
@@ -433,7 +472,7 @@ index ba16e6b..b4bd5d4 100644
      throw;
    }
  
-@@ -342,12 +407,8 @@ DeviceGuard::DeviceGuard(std::string instance_path, Logger &logger)
+@@ -342,12 +434,8 @@ DeviceGuard::DeviceGuard(std::string instance_path, Logger &logger)
  }
  
  DeviceGuard::~DeviceGuard() {
@@ -448,7 +487,7 @@ index ba16e6b..b4bd5d4 100644
        logger_.log(LogScope::Bluetooth, LogLevel::Info,
                    "HidHide revealed Bluetooth HID device instance=" +
 diff --git a/src/platform/win32/vds_hidhide.hh b/src/platform/win32/vds_hidhide.hh
-index 2acbd45..0a4bac4 100644
+index 2acbd45..fd5766a 100644
 --- a/src/platform/win32/vds_hidhide.hh
 +++ b/src/platform/win32/vds_hidhide.hh
 @@ -4,6 +4,7 @@
@@ -459,16 +498,18 @@ index 2acbd45..0a4bac4 100644
  
  namespace vds {
  class Logger;
-@@ -14,6 +15,8 @@ namespace vds::win::hidhide {
+@@ -14,6 +15,10 @@ namespace vds::win::hidhide {
  bool provider_available();
  std::string provider_path();
  void register_daemon();
 +void configure_recovery(std::string path);
 +void recover_changes();
++// Explicit user-requested repair; the caller must first release bridge workers.
++void normalize_inverse_mode();
  
  class DeviceGuard {
  public:
-@@ -27,6 +30,8 @@ private:
+@@ -27,6 +32,8 @@ private:
    std::string instance_path_;
    Logger &logger_;
    bool hide_added_ = false;
@@ -620,7 +661,7 @@ index a951df6..38cae99 100644
  using vds::win::win32_error_message;
  
 diff --git a/src/platform/win32/vdsd.cc b/src/platform/win32/vdsd.cc
-index 34839ba..3b16fce 100644
+index 34839ba..3999079 100644
 --- a/src/platform/win32/vdsd.cc
 +++ b/src/platform/win32/vdsd.cc
 @@ -1,3 +1,4 @@
@@ -1212,7 +1253,7 @@ index 34839ba..3b16fce 100644
      if (!worker_failure_backoffs.empty()) {
        const auto next_retry = std::min_element(
            worker_failure_backoffs.begin(), worker_failure_backoffs.end(),
-@@ -2899,6 +3104,78 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2899,6 +3104,83 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
        break;
      case WaitKind::Control:
        control_pipe.service_ready([&](const std::string &command) {
@@ -1256,6 +1297,11 @@ index 34839ba..3b16fce 100644
 +                if(targets.size()!=1)throw std::runtime_error("Connect exactly one ordinary DualSense before selecting it");
 +                vds::update_config_db(options.db_path,[&](auto& db){db.controllers.clear();vds::upsert_controller_config(db,{targets.front().address,vds::ControllerProfile::Ds5,{0}});});
 +                last_error.clear();scan_requested=true;
++              } else if(action=="normalizeHidHide") {
++                if(bridge_enabled || !workers.empty() || pending_disconnect || disconnect_task.valid())throw std::runtime_error("Pause emulation before HidHide repair");
++                vds::win::hidhide::normalize_inverse_mode();
++                last_error.clear();worker_failure_backoffs.clear();scan_requested=true;
++                logger.log(vds::LogScope::Daemon,vds::LogLevel::Info,"HidHide inverse application mode disabled by explicit owner request");
 +              } else if(action=="recover") {
 +                if(!workers.empty() || bridge_enabled)throw std::runtime_error("Pause emulation before recovery");
 +                vds::win::hidhide::recover_changes();last_error.clear();
@@ -1291,7 +1337,7 @@ index 34839ba..3b16fce 100644
          std::uint32_t current_trace_flags = trace_flags.load();
          const std::string reply = handle_supervisor_control_command(
              command, workers, options.db_path, current_trace_flags,
-@@ -2935,6 +3212,7 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+@@ -2935,6 +3217,7 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
    try {
      g_stop_requested = false;
      const Options options = parse_platform_args(argc, argv);
@@ -1299,7 +1345,7 @@ index 34839ba..3b16fce 100644
      UniqueHandle stop_event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
      if (!stop_event) {
        throw std::runtime_error("failed to create stop event: " +
-@@ -2946,6 +3224,10 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+@@ -2946,6 +3229,10 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
      }
  
      vds::Logger logger(options.log_path);
@@ -1310,7 +1356,7 @@ index 34839ba..3b16fce 100644
      try {
        TimerResolutionGuard timer_resolution(kWindowsTimerResolutionMs);
        logger.log(
-@@ -2953,19 +3235,14 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+@@ -2953,19 +3240,18 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
            timer_resolution.active() ? vds::LogLevel::Info : vds::LogLevel::Warn,
            std::string("Windows timer resolution 1 ms ") +
                (timer_resolution.active() ? "enabled" : "request failed"));
@@ -1324,15 +1370,20 @@ index 34839ba..3b16fce 100644
          logger.log(vds::LogScope::Bluetooth, vds::LogLevel::Error,
                     std::string(kVirtualPortProviderUnavailableReason) +
                         " detail=" + kWindowsHidHideProviderUnavailable);
-         throw std::runtime_error(kWindowsHidHideProviderUnavailable);
+-        throw std::runtime_error(kWindowsHidHideProviderUnavailable);
++        // Keep control/diagnostics available even when a provider needs repair.
++      }
++      vds::win::hidhide::configure_recovery(options.db_path+".hidhide-recovery.json");
++      try {vds::win::hidhide::recover_changes();}
++      catch(const std::exception& error){
++        logger.log(vds::LogScope::Daemon,vds::LogLevel::Warn,
++                   std::string("HidHide startup recovery pending; control endpoint remains available: ")+error.what());
        }
 -      vds::win::hidhide::register_daemon();
-+      vds::win::hidhide::configure_recovery(options.db_path+".hidhide-recovery.json");
-+      vds::win::hidhide::recover_changes();
        if (service_mode) {
          update_service_status(SERVICE_RUNNING);
          logger.log(vds::LogScope::Daemon, vds::LogLevel::Info,
-@@ -3011,7 +3288,7 @@ void WINAPI service_main(DWORD argc, LPSTR *argv) {
+@@ -3011,7 +3297,7 @@ void WINAPI service_main(DWORD argc, LPSTR *argv) {
  
    update_service_status(SERVICE_START_PENDING, ERROR_SUCCESS, 5000);
    g_service_exit_code = static_cast<DWORD>(
@@ -1341,7 +1392,7 @@ index 34839ba..3b16fce 100644
    update_service_status(SERVICE_STOPPED, g_service_exit_code == 0
                                               ? ERROR_SUCCESS
                                               : ERROR_SERVICE_SPECIFIC_ERROR);
-@@ -3035,6 +3312,7 @@ bool dispatch_service_if_needed() {
+@@ -3035,6 +3321,7 @@ bool dispatch_service_if_needed() {
  }
  
  int main(int argc, char **argv) {
@@ -1865,10 +1916,10 @@ index 0000000..ea06e24
 +}
 diff --git a/tests/hidhide_tests.cc b/tests/hidhide_tests.cc
 new file mode 100644
-index 0000000..b489b03
+index 0000000..9f1884a
 --- /dev/null
 +++ b/tests/hidhide_tests.cc
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,85 @@
 +// SPDX-License-Identifier: MIT
 +#define NOMINMAX
 +#include <windows.h>
@@ -1876,6 +1927,7 @@ index 0000000..b489b03
 +#include <fstream>
 +#include <iostream>
 +#include <stdexcept>
++#include <thread>
 +#include "platform/win32/vds_hidhide.hh"
 +#include "vds_log.hh"
 +#include <nlohmann/json.hpp>
@@ -1907,6 +1959,38 @@ index 0000000..b489b03
 +    write("--cloak-off\n--inv-on\n");rejected=false;
 +    try{vds::win::hidhide::DeviceGuard guard("HID\\TARGET",logger);}catch(const std::runtime_error&){rejected=true;}
 +    check(rejected && read(state)=="--cloak-off\n--inv-on\n","inverse mode was changed");
++    for(const auto variable:{L"DSEMU_MOCK_HIDHIDE_ACCESS_OUTPUT",L"DSEMU_MOCK_HIDHIDE_ACCESS_EXIT"}){
++      SetEnvironmentVariableW(variable,L"1");bool denied=false;
++      try{vds::win::hidhide::normalize_inverse_mode();}catch(const std::runtime_error& error){denied=std::string(error.what()).find("HIDHIDE_ACCESS_DENIED")!=std::string::npos;}
++      SetEnvironmentVariableW(variable,nullptr);
++      check(denied && read(state)=="--cloak-off\n--inv-on\n","access failure was mistaken for inverse mode or changed configuration");
++    }
++    // Explicit repair changes only inverse mode and preserves other applications/devices.
++    write("--cloak-on\n--inv-on\n--dev-hide \"HID\\OTHER\"\n--app-reg \"C:\\OtherApp.exe\"\n");
++    vds::win::hidhide::normalize_inverse_mode();
++    check(read(state).find("--inv-off")!=std::string::npos && read(state).find("--inv-on")==std::string::npos,"inverse repair failed");
++    check(read(state).find("--cloak-on")!=std::string::npos && read(state).find("HID\\OTHER")!=std::string::npos && read(state).find("C:\\OtherApp.exe")!=std::string::npos,"repair changed unrelated configuration");
++    const auto repaired=read(state);vds::win::hidhide::normalize_inverse_mode();
++    check(read(state)==repaired,"repair is not idempotent");
++    write("--cloak-off\n--inv-on\n");
++    {std::ofstream journal(temp/"recovery.json");journal<<"{}";}
++    rejected=false;try{vds::win::hidhide::normalize_inverse_mode();}catch(const std::runtime_error&){rejected=true;}
++    check(rejected && read(state)=="--cloak-off\n--inv-on\n","repair bypassed pending recovery");
++    std::filesystem::remove(temp/"recovery.json");
++    write("--cloak-off\n--inv-on\n");SetEnvironmentVariableW(L"DSEMU_MOCK_IGNORE_INV_OFF",L"1");
++    rejected=false;try{vds::win::hidhide::normalize_inverse_mode();}catch(const std::runtime_error&){rejected=true;}
++    SetEnvironmentVariableW(L"DSEMU_MOCK_IGNORE_INV_OFF",nullptr);
++    check(rejected && read(state).find("--inv-on")!=std::string::npos,"repair skipped verification after ignored change");
++    write("--cloak-off\n");rejected=false;
++    try{vds::win::hidhide::normalize_inverse_mode();}catch(const std::runtime_error&){rejected=true;}
++    check(rejected && read(state)=="--cloak-off\n","unknown inverse state was changed");
++    write("--cloak-off\n--inv-off\n");
++    {vds::win::hidhide::DeviceGuard guard("HID\\TARGET",logger);
++      const auto active=read(state);rejected=false;
++      std::thread repair([&]{try{vds::win::hidhide::normalize_inverse_mode();}catch(const std::runtime_error&){rejected=true;}});repair.join();
++      check(rejected && read(state)==active,"repair bypassed active lease");
++    }
++
 +    write("--cloak-on\n--inv-off\n--dev-hide \"HID\\OTHER\"\n");
 +    {vds::win::hidhide::DeviceGuard guard("HID\\TARGET",logger);}
 +    check(read(state).find("--cloak-on")!=std::string::npos && read(state).find("HID\\OTHER")!=std::string::npos,"existing active configuration changed");
@@ -1952,10 +2036,10 @@ index 0000000..4b53cdb
 +}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
 diff --git a/tests/mock_hidhide.cc b/tests/mock_hidhide.cc
 new file mode 100644
-index 0000000..1f7e3aa
+index 0000000..397bbfe
 --- /dev/null
 +++ b/tests/mock_hidhide.cc
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,35 @@
 +// SPDX-License-Identifier: MIT
 +#include <windows.h>
 +#include <algorithm>
@@ -1965,6 +2049,8 @@ index 0000000..1f7e3aa
 +#include <string>
 +#include <vector>
 +int main(int argc,char** argv) {
++  if(GetEnvironmentVariableW(L"DSEMU_MOCK_HIDHIDE_ACCESS_OUTPUT",nullptr,0)>0){std::cout<<"Error code 0x0005 at src\\FilterDriverProxy.cpp(33) Device: access denied\n";return 0;}
++  if(GetEnvironmentVariableW(L"DSEMU_MOCK_HIDHIDE_ACCESS_EXIT",nullptr,0)>0)return 5;
 +  char* path=nullptr;size_t len=0;_dupenv_s(&path,&len,"DSEMU_MOCK_HIDHIDE_STATE");
 +  if(!path)return 3;
 +  std::string filename(path);free(path);
@@ -1973,11 +2059,13 @@ index 0000000..1f7e3aa
 +  const auto prefix=[](const std::string& value,const std::string& p){return value.rfind(p,0)==0;};
 +  for(int i=1;i<argc;++i) {
 +    std::string command(argv[i]);
++    if(command=="--inv-off" && GetEnvironmentVariableW(L"DSEMU_MOCK_IGNORE_INV_OFF",nullptr,0)>0)continue;
 +    if(command=="--cloak-state" || command=="--inv-state" || command=="--app-list" || command=="--dev-list") {
 +      std::string p=command=="--cloak-state"?"--cloak-":command=="--inv-state"?"--inv-":command=="--app-list"?"--app-reg ":"--dev-hide ";
 +      for(const auto& s:lines)if(prefix(s,p))std::cout<<s<<'\n';
-+    } else if(command=="--cloak-on" || command=="--cloak-off") {
-+      lines.erase(std::remove_if(lines.begin(),lines.end(),[&](const auto& s){return prefix(s,"--cloak-");}),lines.end());lines.push_back(command);
++    } else if(command=="--cloak-on" || command=="--cloak-off" || command=="--inv-on" || command=="--inv-off") {
++      const auto key=prefix(command,"--inv-")?"--inv-":"--cloak-";
++      lines.erase(std::remove_if(lines.begin(),lines.end(),[&](const auto& s){return prefix(s,key);}),lines.end());lines.push_back(command);
 +    } else if(command=="--app-reg" || command=="--app-unreg" || command=="--dev-hide" || command=="--dev-unhide") {
 +      if(++i>=argc)return 4;
 +      auto value=(command=="--dev-unhide"?"--dev-hide":command=="--app-unreg"?"--app-reg":command)+std::string(" \"")+argv[i]+"\"";

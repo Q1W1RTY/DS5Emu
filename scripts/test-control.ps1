@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([string]$Engine,[string]$Mock)
 $ErrorActionPreference='Stop'
 $run=Join-Path ([IO.Path]::GetTempPath()) ('dsemu-ipc-'+[Guid]::NewGuid().ToString('N'))
@@ -10,6 +10,7 @@ $name='DSEmu.Test.'+[Guid]::NewGuid().ToString('N')
 $process=$null
 $previousCli=$env:VDS_HIDHIDE_CLI
 $previousState=$env:DSEMU_MOCK_HIDHIDE_STATE
+$previousAccessOutput=$env:DSEMU_MOCK_HIDHIDE_ACCESS_OUTPUT
 function Request([string]$line,[switch]$Fragmented) {
     $pipe=[IO.Pipes.NamedPipeClientStream]::new('.',$name,[IO.Pipes.PipeDirection]::InOut,[IO.Pipes.PipeOptions]::Asynchronous)
     try {
@@ -57,9 +58,31 @@ try {
     Remove-Item -LiteralPath ($database+'.hidhide-recovery.json')
     $reply=Request '{"protocolVersion":1,"id":"clear-recovery","command":"recover"}'
     if(!$reply.ok -or $reply.payload.state -ne 'Paused'){throw 'Completed recovery did not release controller'}
+    Set-Content -LiteralPath $env:DSEMU_MOCK_HIDHIDE_STATE -Value @('--cloak-on','--inv-on','--dev-hide "HID\OTHER"','--app-reg "C:\OtherApp.exe"')
+    $reply=Request '{"protocolVersion":1,"id":"normalize-hidhide","command":"normalizeHidHide"}'
+    if(!$reply.ok -or $reply.payload.enabled -or $reply.payload.state -ne 'Paused'){throw 'HidHide repair did not preserve pause'}
+    $mockState=Get-Content $env:DSEMU_MOCK_HIDHIDE_STATE -Raw
+    if($mockState -notmatch '--inv-off' -or $mockState -notmatch '--cloak-on' -or $mockState -notmatch 'HID\\OTHER' -or $mockState -notmatch 'OtherApp.exe'){throw 'HidHide repair changed unrelated configuration'}
+    $reply=Request '{"protocolVersion":1,"id":"normalize-hidhide-again","command":"normalizeHidHide"}'
+    if(!$reply.ok){throw 'HidHide repair was not idempotent'}
+    # Simulate startup recovery failing because the HidHide GUI owns the handle.
+    Stop-Process -Id $process.Id;$process.WaitForExit()
+    @{schema=1;device='HID\TARGET';daemon=[IO.Path]::GetFullPath($Engine);hideAdded=$true;cloakEnabled=$false;appAdded=$false}|ConvertTo-Json|Set-Content ($database+'.hidhide-recovery.json') -Encoding utf8
+    $env:DSEMU_MOCK_HIDHIDE_ACCESS_OUTPUT='1'
+    $process=Start-Process $Engine -ArgumentList @('--db-path',('"'+$database+'"'),'--log',('"'+(Join-Path $run 'restart-log.txt')+'"'),'--pipe',('"\\.\pipe\'+$name+'"')) -WindowStyle Hidden -PassThru -RedirectStandardError (Join-Path $run 'restart-stderr.txt')
+    $env:DSEMU_MOCK_HIDHIDE_ACCESS_OUTPUT=$previousAccessOutput
+    Start-Sleep -Milliseconds 1000
+    $reply=Request '{"protocolVersion":1,"id":"startup-recovery-failure","command":"getState"}'
+    if(!$reply.ok -or !$reply.payload.recoveryPending -or $reply.payload.state -ne 'Error'){throw 'Startup recovery failure prevented diagnostic control access'}
+    if(!(Test-Path ($database+'.hidhide-recovery.json'))){throw 'Startup recovery failure lost its journal'}
+    if((Get-Content (Join-Path $run 'restart-log.txt') -Raw) -notmatch 'HIDHIDE_ACCESS_DENIED'){throw 'Startup failure did not retain the exact HidHide access error'}
+    Remove-Item -LiteralPath ($database+'.hidhide-recovery.json')
+    $reply=Request '{"protocolVersion":1,"id":"startup-recovery-cleared","command":"recover"}'
+    if(!$reply.ok -or $reply.payload.state -ne 'Paused'){throw 'Diagnostic service could not clear recovered state'}
     Write-Host 'Control protocol tests passed (mock HidHide, no hardware capture)'
 } finally {
     if($process -and !$process.HasExited){Stop-Process -Id $process.Id;$process.WaitForExit()}
     $env:VDS_HIDHIDE_CLI=$previousCli
     $env:DSEMU_MOCK_HIDHIDE_STATE=$previousState
+    $env:DSEMU_MOCK_HIDHIDE_ACCESS_OUTPUT=$previousAccessOutput
 }

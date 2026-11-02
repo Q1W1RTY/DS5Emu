@@ -28,7 +28,7 @@ internal sealed partial class MainWindow : Window {
     readonly Forms.ToolStripMenuItem? startupMenu;
     readonly bool preview;
     BridgeState current = new();
-    bool updating, commanding, exiting, lowBatteryNotified, diagnosticsOpen, exporting, syncingStartup;
+    bool updating, commanding, exiting, exitRequested, lowBatteryNotified, diagnosticsOpen, exporting, syncingStartup;
     int stateGeneration;
     string notifiedError = "", trayState = "";
     DateTime lastDiagnostics = DateTime.MinValue;
@@ -192,6 +192,7 @@ internal sealed partial class MainWindow : Window {
         // Emulation state
         bool emuActive = state.Enabled;
         MainEmuSwitch.IsChecked = emuActive;
+        MainEmuSwitch.IsEnabled = !commanding && !exitRequested;
         if (emuActive) {
             EmuBadge.Background = BlueBrush;
             EmuBadgeGlow.Color = Color.FromRgb(10, 132, 255);
@@ -217,10 +218,12 @@ internal sealed partial class MainWindow : Window {
 
         ControlDetail.Text = !string.IsNullOrEmpty(state.Error) ? FriendlyError(state.Error) : "";
         ControlDetail.Visibility = string.IsNullOrEmpty(ControlDetail.Text) ? Visibility.Collapsed : Visibility.Visible;
+        FixHidHideButton.Visibility = NeedsHidHideRepair(state.Error) ? Visibility.Visible : Visibility.Collapsed;
+        FixHidHideButton.IsEnabled = !commanding && !exitRequested && state.State != "Stopping";
 
-        ToggleButton.IsEnabled = !commanding && state.State != "Stopping";
-        ReconnectButton.IsEnabled = state.Enabled && !commanding && state.State is not ("Wired" or "Conflict" or "Stopping");
-        DisconnectButton.IsEnabled = !commanding && !state.BluetoothDisconnected && state.State is not ("Wired" or "Conflict" or "Stopping" or "Error");
+        ToggleButton.IsEnabled = !commanding && !exitRequested && state.State != "Stopping";
+        ReconnectButton.IsEnabled = state.Enabled && !commanding && !exitRequested && state.State is not ("Wired" or "Conflict" or "Stopping");
+        DisconnectButton.IsEnabled = !commanding && !exitRequested && !state.BluetoothDisconnected && state.State is not ("Wired" or "Conflict" or "Stopping" or "Error");
 
         // Diagnostics
         metrics["Пакеты / с"].Text = state.PacketsPerSecond.ToString("F1");
@@ -270,7 +273,7 @@ internal sealed partial class MainWindow : Window {
         SegmentOff.Style = (Style)FindResource(index == 0 ? "SegmentButtonActive" : "SegmentButton");
         SegmentPS5.Style = (Style)FindResource(index == 1 ? "SegmentButtonActive" : "SegmentButton");
         SegmentXInput.Style = (Style)FindResource(index == 2 ? "SegmentButtonActive" : "SegmentButton");
-        SegmentOff.IsEnabled = SegmentPS5.IsEnabled = SegmentXInput.IsEnabled = !commanding && current.State != "Stopping";
+        SegmentOff.IsEnabled = SegmentPS5.IsEnabled = SegmentXInput.IsEnabled = !commanding && !exitRequested && current.State != "Stopping";
     }
 
     internal void SetDiagnosticsOpen(bool open) {
@@ -307,9 +310,13 @@ internal sealed partial class MainWindow : Window {
         }
     }
 
+    internal static bool NeedsHidHideRepair(string error) => error.Contains("HidHide inverse mode is incompatible", StringComparison.OrdinalIgnoreCase);
+
     static string FriendlyError(string message) {
         if (message.Contains("Enabling HidHide would affect")) return "В HidHide настроены другие устройства. Подробности в диагностике.";
-        if (message.Contains("inverse mode")) return "В HidHide включён обратный режим.";
+        if (message.Contains("HIDHIDE_ACCESS_DENIED") || message.Contains("HidHideCLI failed with exit code 5")) return "HidHide недоступен. Закройте HidHide Configuration Client и повторите включение.";
+        if (message.Contains("inverse mode")) return "В HidHide включён обратный режим. Нажмите «Исправить HidHide».";
+        if (message.Contains("HidHide recovery pending")) return "Закройте окно настройки HidHide и нажмите «Восстановить HidHide» в диагностике.";
         if (message.Contains("recovery deferred")) return "Проверьте восстановление в диагностике.";
         if (message.Contains("ViGEmBus")) return "Для Xbox нужен ViGEmBus. Установите его через установщик DS5Emu.";
         if (message == "BRIDGE_PAUSED") return "Сначала включите эмуляцию.";
@@ -406,7 +413,7 @@ internal sealed partial class MainWindow : Window {
     }
 
     async Task Refresh() {
-        if (updating || exiting || commanding) return;
+        if (updating || exiting || commanding || exitRequested) return;
         updating = true;
         var generation = stateGeneration;
         try {
@@ -436,7 +443,7 @@ internal sealed partial class MainWindow : Window {
     }
 
     async Task Command(string command) {
-        if (commanding || exiting) return;
+        if (commanding || exiting || exitRequested) return;
         commanding = true;
         ++stateGeneration;
         Display(current);
@@ -451,31 +458,25 @@ internal sealed partial class MainWindow : Window {
     }
 
     async Task Exit() {
-        if (exiting || commanding) return;
+        if (exiting || commanding || exitRequested) return;
+        exitRequested = true;
+        ++stateGeneration;
+        Display(current);
         try {
-            await BridgeClient.SendAsync("pause");
-            var deadline = DateTime.UtcNow.AddSeconds(10);
-            bool released = false;
-            while (DateTime.UtcNow < deadline) {
-                if ((await BridgeClient.SendAsync("getState")).State == "Paused") {
-                    released = true;
-                    break;
-                }
-                await Task.Delay(200);
-            }
-            if (!released) throw new IOException("Служба не подтвердила освобождение контроллера.");
-        } catch (Exception e) {
-            if (!ServiceState.StoppedOrMissing()) {
-                Notice("Не удалось выключить эмуляцию: " + e.Message);
-                return;
-            }
+            var result = await BridgeShutdown.AttemptAsync(command => BridgeClient.SendAsync(command), ServiceState.StoppedOrMissing);
+            if (!result.Released && System.Windows.MessageBox.Show(this,
+                "Не удалось подтвердить остановку эмуляции. Закрыть только интерфейс?\n\nСлужба DS5Emu может продолжить работу. Состояние контроллера не подтверждено.\n\n" + result.Error,
+                "Выход из DS5Emu", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            exiting = true;
+            timer.Stop();
+            tray?.Icon?.Dispose();
+            tray?.Dispose();
+            Close();
+            Application.Current.Shutdown();
+        } finally {
+            exitRequested = false;
+            if (!exiting) Display(current);
         }
-        exiting = true;
-        timer.Stop();
-        tray?.Icon?.Dispose();
-        tray?.Dispose();
-        Close();
-        Application.Current.Shutdown();
     }
 
     async Task ExportDiagnostics() {
@@ -536,6 +537,38 @@ internal sealed partial class MainWindow : Window {
     async void DisconnectController(object sender, RoutedEventArgs e) {
         SetFooterMessage("Геймпад отключён");
         await Command("disconnect");
+    }
+
+    async void FixHidHide(object sender, RoutedEventArgs e) {
+        if (commanding || exiting || exitRequested || !NeedsHidHideRepair(current.Error)) return;
+        if (System.Windows.MessageBox.Show(this,
+            "Для DS5Emu нужен обычный режим HidHide. Отключить обратный режим?\n\nЭто общая настройка для всех программ. Списки устройств и приложений сохранятся. Другим программам эмуляции может потребоваться переподключение.",
+            "Исправить HidHide", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        bool repaired = false;
+        var resume = current.Enabled;
+        var mode = current.Mode;
+        commanding = true;
+        ++stateGeneration;
+        Display(current);
+        try {
+            Display(await BridgeClient.SendAsync("pause"));
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (current.State == "Stopping" && DateTime.UtcNow < deadline) {
+                await Task.Delay(100);
+                Display(await BridgeClient.SendAsync("getState"));
+            }
+            if (current.State != "Paused") throw new IOException("Сначала нужно завершить освобождение контроллера и восстановление HidHide.");
+            Display(await BridgeClient.SendAsync("normalizeHidHide"));
+            repaired = true;
+            if (resume) Display(await BridgeClient.SendAsync(mode == "xbox" ? "enableXbox" : "enablePS5"));
+            SetFooterMessage("HidHide исправлен");
+        } catch (Exception error) {
+            Display(current with { State = "Error", Error = error.Message });
+            Notice((repaired ? "HidHide исправлен, но эмуляция не включилась: " : "Не удалось исправить HidHide: ") + error.Message);
+        } finally {
+            commanding = false;
+            Display(current);
+        }
     }
 
     async void RecoverController(object sender, RoutedEventArgs e) => await Command("recover");

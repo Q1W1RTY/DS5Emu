@@ -589,6 +589,7 @@
 
                             <!-- Status/Error Detail Text -->
                             <TextBlock x:Name="ControlDetail" Foreground="#E9B4A8" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"/>
+                            <Button x:Name="FixHidHideButton" Content="Исправить HidHide" Style="{StaticResource PrimaryActionButton}" Margin="0,8,0,0" Click="FixHidHide" Visibility="Collapsed"/>
                         </StackPanel>
                     </Border>
 

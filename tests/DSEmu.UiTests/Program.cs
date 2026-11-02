@@ -31,6 +31,19 @@ internal class Program {
    }
    ++checks;
   }
+  foreach(var error in new[]{"HidHide inverse mode is incompatible; configuration was not changed", "Нет связи со службой", "HidHide returned an unknown inverse state"}){
+   var window=(Window)Activator.CreateInstance(wt,new object[]{true})!;var state=Activator.CreateInstance(st)!;
+   st.GetProperty("State")!.SetValue(state,"Error");st.GetProperty("Enabled")!.SetValue(state,true);st.GetProperty("Error")!.SetValue(state,error);
+   wt.GetMethod("Display")!.Invoke(window,new[]{state});
+   var fix=(Button)window.FindName("FixHidHideButton");
+   if((fix.Visibility==Visibility.Visible)!=error.Contains("is incompatible"))throw new Exception("HidHide repair affordance shown for an unrelated error");
+   if(fix.Visibility==Visibility.Visible){
+    var content=(FrameworkElement)window.Content;content.Measure(new Size(388,double.PositiveInfinity));var height=(int)Math.Ceiling(content.DesiredSize.Height);
+    content.Arrange(new Rect(0,0,388,height));content.UpdateLayout();
+    var bmp=new RenderTargetBitmap(388,height,96,96,PixelFormats.Pbgra32);bmp.Render(content);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bmp));using var file=File.Create(Path.Combine(folder,"HidHide-repair.png"));encoder.Save(file);
+   }
+   ++checks;
+  }
   Console.WriteLine(checks+" UI layout/state scenarios passed (synthetic viewport sizes; no hardware)");
  }
 }
