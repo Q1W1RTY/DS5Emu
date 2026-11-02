@@ -1,4 +1,4 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -27,4 +27,19 @@ static async Task TestClient(string scenario) {
 foreach(var scenario in new[]{"valid","id","version","error","large","eof"})await TestClient(scenario);
 var masked=Diagnostics.Mask("address=12:34:56:78:9a:bc HID\\VID_054C&PID_0CE6\\123456789ABC");
 Check(!masked.Contains("12:34") && !masked.Contains("123456789ABC") && !masked.Contains("VID_054C"),"Private device identity leaked");
-Console.WriteLine("7 managed protocol/diagnostic scenarios passed");
+var eventInput=new[]{
+ "2026-11-02T12:00:00.100+03:00|daemon|INFO|Service started",
+ "2026-11-02T12:00:01.100+03:00|bluetooth|WARN|address=12:34:56:78:9a:bc disconnected",
+ "2026-11-02T12:00:02.100+03:00|bluetooth|WARN|address=12:34:56:78:9a:bc disconnected",
+ "2026-11-02T12:00:03.100+03:00|input-control|DEBUG|packet details",
+ "2026-11-02T12:00:04.100+03:00|port|ERROR|"+new string('x',500),
+ "Unstructured legacy message"
+};
+var events=Diagnostics.RecentEvents(eventInput);
+Check(events.Length==3 && events[0].Message=="Unstructured legacy message","Recent event order/bound failed");
+Check(events[1].Level=="ERROR" && events[1].Time=="12:00:04" && events[1].Message.Length==220 && events[1].Detail.Length>500,"Severity, timestamp or bounded text lost");
+Check(events[2].Count==2 && events[2].RepeatLabel=="×2" && !events[2].Detail.Contains("12:34:56") && events[2].Time=="12:00:02","Repeated events or masking failed");
+Check(Diagnostics.RecentEvents(new[]{"", " ", "2026-11-02T12:00:00+03:00|daemon|DEBUG|hidden detail"}).Length==0,"Empty/debug-only log must remain empty");
+Check(eventInput[1].Contains("12:34:56:78:9a:bc"),"Event presentation mutated original export data");
+Check(Diagnostics.RecentEvents(new[]{"legacy|same", "same"}).Length==2,"Different legacy messages were incorrectly merged");
+Console.WriteLine("13 managed protocol/diagnostic scenarios passed");

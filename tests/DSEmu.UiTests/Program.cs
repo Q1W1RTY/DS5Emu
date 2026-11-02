@@ -14,11 +14,14 @@ internal class Program {
    st.GetProperty("Mode")!.SetValue(state,mode);
    st.GetProperty("State")!.SetValue(state,stateName);st.GetProperty("Enabled")!.SetValue(state,true);
    if(stateName=="Error")st.GetProperty("Error")!.SetValue(state,string.Join(" ",Enumerable.Repeat("Ошибка восстановления контроллера.",20)));
+   st.GetProperty("LogLines")!.SetValue(state,new[]{"2026-11-02T18:40:00+03:00|daemon|INFO|Служба запущена", "2026-11-02T18:40:01+03:00|bluetooth|WARN|Проверка соединения с контроллером", "2026-11-02T18:40:02+03:00|port|ERROR|"+new string('x',500)});
    wt.GetMethod("Display")!.Invoke(window,new[]{state});wt.GetMethod("SetDiagnosticsOpen",BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(window,new object[]{true});
    if(stateName!="Active" && ((TextBlock)window.FindName("EmuTitle")).Text=="Эмуляция включена")throw new Exception("Inactive session presented as active");
    if(stateName=="Active" && mode=="xbox" && !((TextBlock)window.FindName("EmuSubtitle")).Text.Contains("Xbox 360"))throw new Exception("Xbox mode missing from UI");
    if(window.FindName("SegmentDS4") != null)throw new Exception("DS4 placeholder must be removed");
    if(Grid.GetColumn((Button)window.FindName("SegmentXInput")) != 2)throw new Exception("Xbox segment must occupy the third column");
+   if(window.FindName("LogText") != null)throw new Exception("Raw nested log textbox must be removed");
+   if(((ItemsControl)window.FindName("EventList")).Items.Count!=3)throw new Exception("Recent events missing from diagnostics");
    var scroll=(ScrollViewer)window.Content;scroll.Measure(new Size(388,height));scroll.Arrange(new Rect(0,0,388,height));scroll.UpdateLayout();
    if(scroll.ViewportHeight>height+1 || scroll.ViewportHeight<=0)throw new Exception("Invalid viewport");
    if(((ColumnDefinition)window.FindName("BatteryFilled")).Width.Value!=0)throw new Exception("Unknown battery has invented level");

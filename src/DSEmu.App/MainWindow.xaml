@@ -347,33 +347,6 @@
             </Setter>
         </Style>
 
-        <!-- Color Well Style -->
-        <Style x:Key="ColorWell" TargetType="Button">
-            <Setter Property="Width" Value="22"/>
-            <Setter Property="Height" Value="22"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Grid>
-                            <Ellipse x:Name="Ring" Margin="-3" Stroke="#D9FFFFFF" StrokeThickness="1.5" Visibility="Collapsed"/>
-                            <Border CornerRadius="11" Background="{TemplateBinding Background}">
-                                <Border.Effect>
-                                    <DropShadowEffect BlurRadius="3" ShadowDepth="1" Direction="270" Opacity="0.3"/>
-                                </Border.Effect>
-                            </Border>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="Tag" Value="Selected">
-                                <Setter TargetName="Ring" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- Compact Utility Buttons -->
         <Style x:Key="CompactButton" TargetType="Button">
             <Setter Property="Background" Value="#1CFFFFFF"/>
@@ -422,6 +395,25 @@
                                 <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="5"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True" Orientation="Vertical">
+                            <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False"/></Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False"/></Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb>
+                                    <Thumb.Template><ControlTemplate TargetType="Thumb"><Border x:Name="Grip" CornerRadius="2" Background="#55FFFFFF"/><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Grip" Property="Background" Value="#99FFFFFF"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -654,10 +646,8 @@
                             <Button x:Name="AdvancedButton" Style="{StaticResource GhostRowButton}" Click="ToggleAdvanced" Height="44" Padding="14,0">
                                 <Grid>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="Дополнительно" FontSize="13" Foreground="#F0F1F3" VerticalAlignment="Center"/>
-                                        <Border CornerRadius="8" Background="#0FFFFFFF" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock x:Name="SummaryPill" Text="Статистика в диагностике" FontSize="11" Foreground="#66FFFFFF"/>
-                                        </Border>
+                                        <TextBlock Text="Диагностика" FontSize="13" Foreground="#F0F1F3" VerticalAlignment="Center"/>
+
                                     </StackPanel>
                                     <Viewbox Width="12" Height="12" Stretch="Uniform" HorizontalAlignment="Right" VerticalAlignment="Center">
                                         <Canvas Width="24" Height="24">
@@ -672,69 +662,13 @@
                             </Button>
 
                             <!-- Disclosure Expanded Content -->
-                            <Border x:Name="DisclosurePanel" Visibility="Collapsed" Background="#26000000" BorderBrush="#0DFFFFFF" BorderThickness="0,1,0,0" Padding="14,12" CornerRadius="0,0,20,20">
+                            <Border x:Name="DisclosurePanel" Visibility="Collapsed" Background="Transparent" BorderBrush="#0DFFFFFF" BorderThickness="0,1,0,0" Padding="14,12" CornerRadius="0,0,20,20">
                                 <StackPanel>
-                                    <!-- Lightbar (Unimplemented: visible, disabled in driver) -->
-                                    <Grid Margin="0,2,0,11" ToolTip="Настройка подсветки в разработке (кликните для предпросмотра)">
-                                        <TextBlock Text="Подсветка тачпада" FontSize="12" Foreground="#99FFFFFF" VerticalAlignment="Center"/>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                            <Button IsEnabled="False" ToolTip="Ручная подсветка пока недоступна" Style="{StaticResource ColorWell}" Background="#0A84FF" Tag="Selected" Click="LightbarColor_Click" Margin="3,0"/>
-                                            <Button IsEnabled="False" ToolTip="Ручная подсветка пока недоступна" Style="{StaticResource ColorWell}" Background="#64D2FF" Click="LightbarColor_Click" Margin="3,0"/>
-                                            <Button IsEnabled="False" ToolTip="Ручная подсветка пока недоступна" Style="{StaticResource ColorWell}" Background="#BF5AF2" Click="LightbarColor_Click" Margin="3,0"/>
-                                            <Button IsEnabled="False" ToolTip="Ручная подсветка пока недоступна" Style="{StaticResource ColorWell}" Background="#30D158" Click="LightbarColor_Click" Margin="3,0"/>
-                                            <Button IsEnabled="False" ToolTip="Ручная подсветка пока недоступна" Style="{StaticResource ColorWell}" Background="#FF9F0A" Click="LightbarColor_Click" Margin="3,0"/>
-                                        </StackPanel>
-                                    </Grid>
-
-                                    <!-- Rumble (Unimplemented: visible, disabled) -->
-                                    <StackPanel Margin="0,0,0,11" IsEnabled="False" Opacity="0.5" ToolTip="Сила отдачи управляется играми по умолчанию">
-                                        <Grid Margin="0,0,0,5">
-                                            <TextBlock Text="Сила виброотдачи" FontSize="12" Foreground="#99FFFFFF"/>
-                                            <TextBlock Text="100%" FontSize="12" FontWeight="Medium" Foreground="#E5E7EB" HorizontalAlignment="Right"/>
-                                        </Grid>
-                                        <Border Height="28" CornerRadius="14" Background="#50000000" BorderBrush="#0DFFFFFF" BorderThickness="1">
-                                            <Grid>
-                                                <Border Background="#E0FFFFFF" CornerRadius="14" HorizontalAlignment="Stretch"/>
-                                                <Viewbox Width="14" Height="14" Stretch="Uniform" HorizontalAlignment="Left" Margin="10,0,0,0">
-                                                    <Canvas Width="24" Height="24">
-                                                        <Path Data="M2 8v8 M6 5v14 M18 5v14 M22 8v8 M10 3v18 M14 3v18" Stroke="#202020" StrokeThickness="2.2" StrokeStartLineCap="Round"/>
-                                                    </Canvas>
-                                                </Viewbox>
-                                            </Grid>
-                                        </Border>
-                                    </StackPanel>
-
-                                    <!-- Adaptive Triggers (Unimplemented: visible, disabled) -->
-                                    <Grid Margin="0,0,0,11" IsEnabled="False" Opacity="0.5" ToolTip="Адаптивные триггеры управляются поддерживаемыми играми">
-                                        <TextBlock Text="Адаптивные курки" FontSize="12" Foreground="#99FFFFFF" VerticalAlignment="Center"/>
-                                        <Border CornerRadius="8" Background="#14FFFFFF" BorderBrush="#0DFFFFFF" BorderThickness="1" Padding="8,4" HorizontalAlignment="Right">
-                                            <TextBlock Text="Динамические (Игра)" FontSize="11.5" FontWeight="Medium" Foreground="#E5E7EB"/>
-                                        </Border>
-                                    </Grid>
-
-                                    <!-- Polling Rate (Unimplemented: visible, disabled) -->
-                                    <Grid Margin="0,0,0,12" IsEnabled="False" Opacity="0.5" ToolTip="Частота опроса фиксирована драйвером на 1000 Гц">
-                                        <TextBlock Text="Частота опроса" FontSize="12" Foreground="#99FFFFFF" VerticalAlignment="Center"/>
-                                        <Border CornerRadius="8" Background="#40000000" BorderBrush="#0DFFFFFF" BorderThickness="1" Padding="2" HorizontalAlignment="Right">
-                                            <StackPanel Orientation="Horizontal">
-                                                <Border Padding="8,2" CornerRadius="6">
-                                                    <TextBlock Text="500 Гц" FontSize="11" Foreground="#66FFFFFF"/>
-                                                </Border>
-                                                <Border Padding="8,2" CornerRadius="6" Background="#26FFFFFF">
-                                                    <TextBlock Text="1000 Гц" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
-                                                </Border>
-                                            </StackPanel>
-                                        </Border>
-                                    </Grid>
-
-                                    <!-- Divider before Diagnostics -->
-                                    <Border Height="1" Background="#14FFFFFF" Margin="0,4,0,10"/>
-
                                     <!-- Diagnostics & Logging Section -->
                                     <Border x:Name="DiagnosticsPanel">
                                         <StackPanel>
                                             <Grid Margin="0,0,0,8">
-                                                <TextBlock Text="ДИАГНОСТИКА" FontSize="11" FontWeight="SemiBold" Foreground="#66FFFFFF"/>
+                                                <TextBlock Text="Подключение и звук" FontSize="12" FontWeight="Medium" Foreground="#BBFFFFFF"/>
                                                 <TextBlock x:Name="DiagnosticsUpdated" FontSize="10" Foreground="#55FFFFFF" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <!-- Metrics Columns -->
@@ -748,8 +682,43 @@
                                                 <StackPanel Grid.Column="2" x:Name="AudioMetrics"/>
                                             </Grid>
                                             <TextBlock x:Name="DiagnosticError" Foreground="#E9B4A8" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
-                                            <TextBlock Text="ПОСЛЕДНИЕ СОБЫТИЯ" FontSize="10" FontWeight="SemiBold" Foreground="#55FFFFFF" Margin="0,0,0,4"/>
-                                            <TextBox x:Name="LogText" Height="80" IsReadOnly="True" FontFamily="Consolas" FontSize="10" Background="#121316" Foreground="#AEB6C3" BorderThickness="0" Padding="6" TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
+                                            <Border Height="1" Background="#0DFFFFFF" Margin="0,2,0,12"/>
+                                            <TextBlock Text="Последние события" FontSize="12" FontWeight="Medium" Foreground="#BBFFFFFF" Margin="0,0,0,8"/>
+                                            <TextBlock x:Name="EventsEmpty" Text="Событий пока нет" FontSize="11" Foreground="#66FFFFFF" Margin="0,0,0,10"/>
+                                            <ItemsControl x:Name="EventList" AutomationProperties.Name="Последние события службы">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="#07FFFFFF" CornerRadius="10" Padding="10,8" Margin="0,0,0,5" ToolTip="{Binding Detail}">
+                                                            <StackPanel>
+                                                                <Grid Margin="0,0,0,4">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="10"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Ellipse Width="5" Height="5" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                                        <Ellipse.Style>
+                                                                            <Style TargetType="Ellipse">
+                                                                                <Setter Property="Fill" Value="#6B9ECE"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding Level}" Value="WARN"><Setter Property="Fill" Value="#FFB340"/></DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Level}" Value="ERROR"><Setter Property="Fill" Value="#FF7069"/></DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Ellipse.Style>
+                                                                    </Ellipse>
+                                                                    <TextBlock Grid.Column="1" Text="{Binding Category}" FontSize="10" Foreground="#88FFFFFF"/>
+                                                                    <TextBlock Grid.Column="2" Text="{Binding RepeatLabel}" FontSize="10" Foreground="#66FFFFFF" Margin="0,0,6,0"/>
+                                                                    <TextBlock Grid.Column="3" Text="{Binding Time}" FontSize="10" Foreground="#66FFFFFF"/>
+                                                                </Grid>
+                                                                <TextBlock Text="{Binding Message}" FontSize="11" Foreground="#D9FFFFFF" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="44"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="Полный журнал — в диагностическом ZIP" FontSize="10" Foreground="#55FFFFFF" Margin="0,3,0,4"/>
                                             <Grid Margin="0,8,0,0">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>

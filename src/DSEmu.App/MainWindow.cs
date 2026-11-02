@@ -33,6 +33,7 @@ internal sealed partial class MainWindow : Window {
     string notifiedError = "", trayState = "";
     DateTime lastDiagnostics = DateTime.MinValue;
     string[] diagnosticLines = Array.Empty<string>();
+    DiagnosticEvent[] eventRows = Array.Empty<DiagnosticEvent>();
     DispatcherTimer? footerResetTimer;
 
     static readonly Brush GreenBrush = new SolidColorBrush(Color.FromRgb(48, 209, 88));
@@ -236,10 +237,11 @@ internal sealed partial class MainWindow : Window {
 
         if (state.LogLines.Length > 0) {
             diagnosticLines = state.LogLines;
-            var text = string.Join(Environment.NewLine, state.LogLines.Select(Diagnostics.Mask));
-            if (LogText.Text != text) {
-                LogText.Text = text;
-                LogText.ScrollToEnd();
+            var events = Diagnostics.RecentEvents(state.LogLines);
+            if (!eventRows.SequenceEqual(events)) {
+                eventRows = events;
+                EventList.ItemsSource = events;
+                EventsEmpty.Visibility = events.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             }
             DiagnosticsUpdated.Text = "Обновлено " + DateTime.Now.ToString("HH:mm:ss");
         }
@@ -542,22 +544,6 @@ internal sealed partial class MainWindow : Window {
     async void DisconnectController(object sender, RoutedEventArgs e) {
         SetFooterMessage("Геймпад отключён");
         await Command("disconnect");
-    }
-
-    // Lightbar color preview
-    void LightbarColor_Click(object sender, RoutedEventArgs e) {
-        if (sender is Button btn && btn.Background is SolidColorBrush brush) {
-            GlyphLightbar.Stroke = brush;
-            GlyphLightbarGlow.Color = brush.Color;
-
-            // Update Tag="Selected"
-            if (btn.Parent is Panel panel) {
-                foreach (var child in panel.Children) {
-                    if (child is Button b) b.Tag = (b == btn) ? "Selected" : null;
-                }
-            }
-            SetFooterMessage("Цвет подсветки обновлён");
-        }
     }
 
     async void RecoverController(object sender, RoutedEventArgs e) => await Command("recover");

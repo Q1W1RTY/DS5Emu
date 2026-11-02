@@ -35,7 +35,7 @@ scripts/test.ps1 запускает CTest и managed-сценарии прото
 
 ## Кандидат после ревью
 
-Версия задаётся в VERSION. scripts/test.ps1 включает 9 native-групп, 7 managed-сценариев и 36 UI layout/state-сценариев с синтетическими областями просмотра. Повышенный scripts/qa-install-path.ps1 использует отдельную службу, pipe, реестр и защищённую папку с пробелами/кириллицей/скобками; TestDrive задаёт локальный диск. Настоящие драйверы fixture не устанавливает. scripts/qa-cleanup-fixtures.ps1 удаляет его проверенные собственные каталоги, сохраняя отчёты.
+Версия задаётся в VERSION. scripts/test.ps1 включает 9 native-групп, 13 managed-сценариев и 36 UI layout/state-сценариев с синтетическими областями просмотра. Повышенный scripts/qa-install-path.ps1 использует отдельную службу, pipe, реестр и защищённую папку с пробелами/кириллицей/скобками; TestDrive задаёт локальный диск. Настоящие драйверы fixture не устанавливает. scripts/qa-cleanup-fixtures.ps1 удаляет его проверенные собственные каталоги, сохраняя отчёты.
 
 Для тестового EXE с изменённым native: scripts/build-setup.ps1 -CandidateNativeDirectory <artifacts/native-Release>. Метаданные сохраняют candidate=true и hardwareAccepted=false; это не снимает защиту принятого native-хеша в обычном профиле. qa-setup проверяет выбранный режим и хеши. Принятие нового native и публикация требуют отдельного решения после аппаратной проверки.
 
