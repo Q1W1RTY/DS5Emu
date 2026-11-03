@@ -6,8 +6,8 @@
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'qa-common.ps1')
 $root=Split-Path $PSScriptRoot -Parent
-$install=[IO.Path]::GetFullPath(((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu').InstallLocation))
-$data=Join-Path $env:ProgramData 'DSEmu'
+$install=[IO.Path]::GetFullPath(((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DS5Link').InstallLocation))
+$data=Join-Path $env:ProgramData 'DS5Link'
 $result=Join-Path $OutputDirectory 'install-lifecycle.json'
 $phases=@();$restoreError=$null;$completed=$false
 function Save-Result([string]$ErrorText='') {
@@ -25,11 +25,11 @@ function Invoke-Setup([string]$Script,[string]$Phase,[switch]$WithOwner) {
  if($child.ExitCode -ne 0){throw "$Phase exited $($child.ExitCode); see $Phase.err"}
 }
 function Assert-Paused {
- $null=Wait-DSEmuState Paused -Seconds 30
+ $null=Wait-DS5LinkState Paused -Seconds 30
  if(Test-Path (Join-Path $data 'bridge.db.hidhide-recovery.json')){throw 'Recovery journal remained while paused'}
  $until=[DateTime]::UtcNow.AddSeconds(15)
  do {
-  $virtual=@(Get-PnpDevice -PresentOnly|Where-Object {$_.InstanceId -like '*DSEmu-DualSense-Port-0*'})
+  $virtual=@(Get-PnpDevice -PresentOnly|Where-Object {$_.InstanceId -like '*DS5Link-DualSense-Port-0*'})
   if(!$virtual.Count){return}
   Start-Sleep -Milliseconds 300
  }while([DateTime]::UtcNow -lt $until)
@@ -38,23 +38,23 @@ function Assert-Paused {
 try {
  if(!([Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Administrator required'}
  $null=[Security.Principal.SecurityIdentifier]::new($OwnerSid)
- if($install -ne 'C:\Program Files\DSEmu'){throw 'Unexpected installation root'}
+ if($install -ne 'C:\Program Files\DS5Link'){throw 'Unexpected installation root'}
  $PackageDirectory=[IO.Path]::GetFullPath($PackageDirectory)
  if(!$PackageDirectory.StartsWith((Join-Path $root 'artifacts\packages\'),[StringComparison]::OrdinalIgnoreCase)){throw 'Package must be inside this project artifacts/packages'}
  foreach($path in @($install,$PackageDirectory)){
   if(!(Test-Path -LiteralPath $path) -or ((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Missing or redirected lifecycle path'}
  }
- $service=Get-CimInstance Win32_Service -Filter "Name='DSEmuBridge'"
- if(!$service -or !$service.PathName.StartsWith(('"'+$install+'\engine\vdsd.exe"'),[StringComparison]::OrdinalIgnoreCase)){throw 'Unexpected DSEmu service path'}
+ $service=Get-CimInstance Win32_Service -Filter "Name='DS5LinkBridge'"
+ if(!$service -or !$service.PathName.StartsWith(('"'+$install+'\engine\vdsd.exe"'),[StringComparison]::OrdinalIgnoreCase)){throw 'Unexpected DS5Link service path'}
  Assert-Paused
  $baseline=Read-HidHide
  $configHash=(Get-FileHash (Join-Path $data 'bridge.db')).Hash
  # User profile names can differ from account names; use the registered profile.
  $profile=(Get-ItemProperty ('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\'+$OwnerSid)).ProfileImagePath
- $settingsPath=Join-Path ([Environment]::ExpandEnvironmentVariables($profile)) 'AppData\Local\DSEmu\settings.json'
+ $settingsPath=Join-Path ([Environment]::ExpandEnvironmentVariables($profile)) 'AppData\Local\DS5Link\settings.json'
  $settingsHash=if(Test-Path $settingsPath){(Get-FileHash $settingsPath).Hash}else{$null}
  $runKey='Registry::HKEY_USERS\'+$OwnerSid+'\Software\Microsoft\Windows\CurrentVersion\Run'
- $autostart=(Get-ItemProperty $runKey -Name DSEmu -ErrorAction SilentlyContinue).DSEmu
+ $autostart=(Get-ItemProperty $runKey -Name DS5Link -ErrorAction SilentlyContinue).DS5Link
  $backup=Join-Path $OutputDirectory 'before-lifecycle'
  New-Item -ItemType Directory $backup -Force|Out-Null
  Copy-Item -LiteralPath (Join-Path $data 'bridge.db') -Destination $backup
@@ -65,7 +65,7 @@ try {
  Assert-Paused
  if((Get-FileHash (Join-Path $data 'bridge.db')).Hash -ne $configHash){throw 'Upgrade changed controller configuration'}
  if($settingsHash -and (Get-FileHash $settingsPath).Hash -ne $settingsHash){throw 'Upgrade changed UI settings'}
- if((Get-ItemProperty $runKey -Name DSEmu -ErrorAction SilentlyContinue).DSEmu -ne $autostart){throw 'Upgrade changed autostart preference'}
+ if((Get-ItemProperty $runKey -Name DS5Link -ErrorAction SilentlyContinue).DS5Link -ne $autostart){throw 'Upgrade changed autostart preference'}
  $phases+=[pscustomobject]@{phase='upgrade';ok=$true;configPreserved=$true;settingsPreserved=$true;pausePreserved=$true;autostartPreserved=$true};Save-Result
 
  $fixture=Join-Path $OutputDirectory 'rollback-fixture'
@@ -82,10 +82,10 @@ try {
 
  Invoke-Setup (Join-Path $install 'Uninstall.ps1') 'uninstall'
  $until=[DateTime]::UtcNow.AddSeconds(15)
- do{$remaining=Get-Service DSEmuBridge -ErrorAction SilentlyContinue;if(!$remaining){break};Start-Sleep -Milliseconds 300}while([DateTime]::UtcNow -lt $until)
+ do{$remaining=Get-Service DS5LinkBridge -ErrorAction SilentlyContinue;if(!$remaining){break};Start-Sleep -Milliseconds 300}while([DateTime]::UtcNow -lt $until)
  if($remaining -or (Test-Path -LiteralPath $install)){throw 'Uninstall retained service or application directory'}
- if(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu'){throw 'Uninstall registration remained'}
- if(Test-Path 'HKLM:\SOFTWARE\DSEmu'){throw 'Owner registration remained'}
+ if(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DS5Link'){throw 'Uninstall registration remained'}
+ if(Test-Path 'HKLM:\SOFTWARE\DS5Link'){throw 'Owner registration remained'}
  $afterUninstall=Read-HidHide
  if(@(Compare-Object $baseline $afterUninstall).Count){throw 'Uninstall changed baseline HidHide'}
  $shared=@(Get-CimInstance Win32_SystemDriver -Filter "Name='HidHide' OR Name='usbip2_ude' OR Name='usbip2_filter'"|Select-Object Name,State)
@@ -96,12 +96,12 @@ try {
  Assert-Paused
  if((Get-FileHash (Join-Path $data 'bridge.db')).Hash -ne $configHash){throw 'Reinstall changed controller configuration'}
  if($settingsHash -and (Get-FileHash $settingsPath).Hash -ne $settingsHash){throw 'Reinstall changed UI settings'}
- if($autostart){New-ItemProperty -Path $runKey -Name DSEmu -Value $autostart -PropertyType String -Force|Out-Null}
+ if($autostart){New-ItemProperty -Path $runKey -Name DS5Link -Value $autostart -PropertyType String -Force|Out-Null}
  $phases+=[pscustomobject]@{phase='reinstall';ok=$true;configPreserved=$true;settingsPreserved=$true;paused=$true};$completed=$true;Save-Result
 } catch {
  $failure=$_.Exception.Message
  try {
-  if(!(Test-Path (Join-Path $install 'engine\vdsd.exe')) -or (Get-Service DSEmuBridge -ErrorAction SilentlyContinue).Status -ne 'Running'){
+  if(!(Test-Path (Join-Path $install 'engine\vdsd.exe')) -or (Get-Service DS5LinkBridge -ErrorAction SilentlyContinue).Status -ne 'Running'){
    Invoke-Setup (Join-Path $PackageDirectory 'Install.ps1') 'restore' -WithOwner
   }
  }catch{$restoreError=$_.Exception.Message}

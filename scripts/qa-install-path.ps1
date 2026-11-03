@@ -8,9 +8,11 @@ $serviceName=$id+'Bridge';$pipeName=$id+'.Control.v1'
 $targetRoot=Join-Path ($TestDrive+'\') $id
 $target=Join-Path $targetRoot 'Приложение [тест] с пробелами'
 $package=Join-Path $run 'package';New-Item -ItemType Directory (Join-Path $package 'app\engine') -Force|Out-Null
-$realService=Get-CimInstance Win32_Service -Filter "Name='DSEmuBridge'"
+$realServiceName=if(Get-Service DS5LinkBridge -ErrorAction SilentlyContinue){'DS5LinkBridge'}else{'DSEmuBridge'}
+$realRegistration=if($realServiceName -eq 'DS5LinkBridge'){'DS5Link'}else{'DSEmu'}
+$realService=Get-CimInstance Win32_Service -Filter "Name='$realServiceName'"
 $realPid=$realService.ProcessId
-$beforeRegistry=(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu').InstallLocation
+$beforeRegistry=(Get-ItemProperty ('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\'+$realRegistration)).InstallLocation
 $steps=@();$ok=$false
 function Invoke-Installer([string]$Script,[string]$Phase,[string[]]$Extra=@(),[int]$Expected=0){
  $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$Script+'"'))+$Extra
@@ -20,8 +22,8 @@ function Invoke-Installer([string]$Script,[string]$Phase,[string[]]$Extra=@(),[i
 }
 try{
  if(!([Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Administrator required for the isolated service fixture'}
- foreach($file in @('Install.ps1','Uninstall.ps1','InstallPaths.ps1','Dependencies.ps1')){
-  $text=[IO.File]::ReadAllText((Join-Path $project ('installer\'+$file))).Replace('DSEmu',$id).Replace('DS5Emu.lnk',($id+'.lnk'))
+ foreach($file in @('Install.ps1','Uninstall.ps1','InstallPaths.ps1','OwnedFiles.ps1','Dependencies.ps1')){
+  $text=[IO.File]::ReadAllText((Join-Path $project ('installer\'+$file))).Replace('DS5Link',$id).Replace(($id+'.exe'),'DS5Link.exe')
   [IO.File]::WriteAllText((Join-Path $package $file),$text,[Text.UTF8Encoding]::new($true))
  }
  '[]'|Set-Content (Join-Path $package 'dependencies.json') -Encoding utf8
@@ -47,7 +49,7 @@ public class FixtureService:ServiceBase {
  $binary=Join-Path $package 'app\engine\vdsd.exe'
  & "$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe (('/out:')+$binary) /reference:System.ServiceProcess.dll /reference:System.Web.Extensions.dll $cs
  if($LASTEXITCODE){throw 'Fixture compile failed'}
- Copy-Item $binary (Join-Path $package 'app\DS5Emu.exe')
+ Copy-Item $binary (Join-Path $package 'app\DS5Link.exe')
  $setup=Join-Path $package 'Install.ps1'
  $freshLate=Join-Path $run 'fresh-late-failure';Copy-Item -LiteralPath $package -Destination $freshLate -Recurse
  $freshScript=Join-Path $freshLate 'Install.ps1'
@@ -63,7 +65,7 @@ public class FixtureService:ServiceBase {
  Get-ChildItem $bootstrapPayload -File -Recurse | Sort-Object FullName | ForEach-Object {'{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName).Hash,$_.FullName.Substring($bootstrapPayload.Length+1)} | Set-Content (Join-Path $bootstrapPayload 'files.sha256') -Encoding utf8
  $bootstrapZip=Join-Path $run 'bootstrap.zip';Compress-Archive (Join-Path $bootstrapPayload '*') $bootstrapZip
  $bootstrapExe=Join-Path $run 'BootstrapFixture.exe'
- & "$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /platform:x64 (('/out:')+$bootstrapExe) /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll (('/resource:')+$bootstrapZip+',DS5Emu.Payload') (Join-Path $project 'installer\Setup.cs') (Join-Path $project 'installer\SetupStyle.cs')
+ & "$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /platform:x64 (('/out:')+$bootstrapExe) /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll (('/resource:')+$bootstrapZip+',DS5Link.Payload') (Join-Path $project 'installer\Setup.cs') (Join-Path $project 'installer\SetupStyle.cs')
  if($LASTEXITCODE){throw 'Bootstrap fixture compile failed'}
  [IO.File]::WriteAllText($bootstrapScript,"throw 'UNTRUSTED COPY WAS EXECUTED'",[Text.UTF8Encoding]::new($true))
  $bootstrap=Start-Process $bootstrapExe -ArgumentList @('--install-elevated',('"'+$target+'"'),$OwnerSid) -PassThru -Wait
@@ -76,14 +78,14 @@ public class FixtureService:ServiceBase {
  if($service.State -ne 'Running' -or !$service.PathName.StartsWith(('"'+$target+'\engine\vdsd.exe"'))){throw 'Custom service path incorrect'}
  $shell=New-Object -ComObject WScript.Shell
  $link=Join-Path ([Environment]::GetFolderPath('CommonPrograms')) ($id+'.lnk')
- if($shell.CreateShortcut($link).TargetPath -ne (Join-Path $target 'DS5Emu.exe')){throw 'Custom shortcut target incorrect'}
+ if($shell.CreateShortcut($link).TargetPath -ne (Join-Path $target 'DS5Link.exe')){throw 'Custom shortcut target incorrect'}
  $uninstallKey='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\'+$id
  if(!((Get-ItemProperty $uninstallKey).UninstallString).EndsWith(('"'+$target+'\Uninstall.ps1"'),[StringComparison]::OrdinalIgnoreCase)){throw 'Custom uninstall path incorrect'}
  $fixtureRun='Registry::HKEY_USERS\'+$OwnerSid+'\Software\Microsoft\Windows\CurrentVersion\Run'
  New-Item $fixtureRun -Force|Out-Null
- New-ItemProperty $fixtureRun -Name $id -Value ('"'+(Join-Path $target 'DS5Emu.exe')+'" --background') -PropertyType String -Force|Out-Null
+ New-ItemProperty $fixtureRun -Name $id -Value ('"'+(Join-Path $target 'DS5Link.exe')+'" --background') -PropertyType String -Force|Out-Null
  Invoke-Installer $setup 'upgrade-detects-path' @('-OwnerSid',$OwnerSid)
- if((Get-ItemProperty $fixtureRun -Name $id).$id -ne ('"'+(Join-Path $target 'DS5Emu.exe')+'" --background')){throw 'Upgrade changed autostart target'}
+ if((Get-ItemProperty $fixtureRun -Name $id).$id -ne ('"'+(Join-Path $target 'DS5Link.exe')+'" --background')){throw 'Upgrade changed autostart target'}
  $mismatch=Join-Path $targetRoot 'Другой каталог'
  Invoke-Installer $setup 'reject-relocation' @('-OwnerSid',$OwnerSid,'-InstallDir',('"'+$mismatch+'"')) 1
  if(Test-Path -LiteralPath $mismatch){throw 'Rejected relocation changed filesystem'}
@@ -94,7 +96,7 @@ public class FixtureService:ServiceBase {
   $foreign=Join-Path $targetRoot 'NotEmpty';New-Item -ItemType Directory $foreign|Out-Null
   Set-Content (Join-Path $foreign 'keep.txt') 'preserve me'
   Invoke-Installer $setup 'reject-nonempty' @('-ValidateOnly','-InstallDir',('"'+$foreign+'"')) 1
-  foreach($bad in @('D:\','\\server\share\DS5Emu',$env:windir,$env:ProgramFiles)){
+  foreach($bad in @('D:\','\\server\share\DS5Link',$env:windir,$env:ProgramFiles)){
    $label='reject-path-'+$steps.Count
    Invoke-Installer $setup $label @('-ValidateOnly','-InstallDir',('"'+$bad.TrimEnd('\')+'"')) 1
   }
@@ -117,16 +119,18 @@ public class FixtureService:ServiceBase {
  [IO.File]::WriteAllBytes((Join-Path $corrupt 'app\engine\vdsd.exe'),[byte[]](0,1,2,3))
  Invoke-Installer (Join-Path $corrupt 'Install.ps1') 'rollback-corrupt-candidate' @('-OwnerSid',$OwnerSid) 1
  if((Get-FileHash (Join-Path $target 'engine\vdsd.exe')).Hash -ne $expected -or (Get-Service $serviceName).Status -ne 'Running'){throw 'Rollback did not restore files and service'}
+ Set-Content -LiteralPath (Join-Path $target 'personal-sentinel.txt') 'foreign must survive'
  Invoke-Installer (Join-Path $target 'Uninstall.ps1') 'uninstall-custom-path'
- if((Test-Path -LiteralPath $target) -or (Get-Service $serviceName -ErrorAction SilentlyContinue) -or (Test-Path $uninstallKey)){throw 'Custom install not fully removed'}
+ if((Test-Path -LiteralPath (Join-Path $target 'engine\vdsd.exe')) -or (Get-Service $serviceName -ErrorAction SilentlyContinue) -or (Test-Path $uninstallKey)){throw 'Custom install not fully removed'}
+ if((Get-Content -LiteralPath (Join-Path $target 'personal-sentinel.txt') -Raw).Trim() -ne 'foreign must survive'){throw 'Uninstall touched a foreign file'}
  if((Get-ItemProperty $fixtureRun -Name $id -ErrorAction SilentlyContinue).$id){throw 'Fixture autostart entry remained'}
- if((Get-CimInstance Win32_Service -Filter "Name='DSEmuBridge'").ProcessId -ne $realPid){throw 'Real service was restarted unexpectedly'}
- if((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu').InstallLocation -ne $beforeRegistry){throw 'Real registration changed'}
+ if((Get-CimInstance Win32_Service -Filter "Name='$realServiceName'").ProcessId -ne $realPid){throw 'Real service was restarted unexpectedly'}
+ if((Get-ItemProperty ('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\'+$realRegistration)).InstallLocation -ne $beforeRegistry){throw 'Real registration changed'}
  $ok=$true
 }catch{$errorText=$_.Exception.ToString();throw}
 finally{
  $fixture=Get-Service $serviceName -ErrorAction SilentlyContinue
  if($fixture){Stop-Service $serviceName -ErrorAction SilentlyContinue;& sc.exe delete $serviceName|Out-Null}
- @{ok=$ok;error=$errorText;steps=$steps;target=$target;realServicePidPreserved=((Get-CimInstance Win32_Service -Filter "Name='DSEmuBridge'").ProcessId -eq $realPid)}|ConvertTo-Json -Depth 6|Set-Content (Join-Path $run 'result.json') -Encoding utf8
+ @{ok=$ok;error=$errorText;steps=$steps;target=$target;realServicePidPreserved=((Get-CimInstance Win32_Service -Filter "Name='$realServiceName'").ProcessId -eq $realPid)}|ConvertTo-Json -Depth 6|Set-Content (Join-Path $run 'result.json') -Encoding utf8
  Set-Content (Join-Path (Join-Path $project 'artifacts') 'install-path-qa-latest.txt') $run -Encoding utf8
 }

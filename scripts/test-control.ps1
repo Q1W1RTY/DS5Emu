@@ -1,16 +1,16 @@
 ﻿[CmdletBinding()]
 param([string]$Engine,[string]$Mock)
 $ErrorActionPreference='Stop'
-$run=Join-Path ([IO.Path]::GetTempPath()) ('dsemu-ipc-'+[Guid]::NewGuid().ToString('N'))
+$run=Join-Path ([IO.Path]::GetTempPath()) ('ds5link-ipc-'+[Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $run | Out-Null
 $database=Join-Path $run 'test.db'
 Set-Content ($database+'.paused') 'paused'
 Set-Content (Join-Path $run 'mock.txt') "--cloak-off`n--inv-off"
-$name='DSEmu.Test.'+[Guid]::NewGuid().ToString('N')
+$name='DS5Link.Test.'+[Guid]::NewGuid().ToString('N')
 $process=$null
 $previousCli=$env:VDS_HIDHIDE_CLI
-$previousState=$env:DSEMU_MOCK_HIDHIDE_STATE
-$previousAccessOutput=$env:DSEMU_MOCK_HIDHIDE_ACCESS_OUTPUT
+$previousState=$env:DS5LINK_MOCK_HIDHIDE_STATE
+$previousAccessOutput=$env:DS5LINK_MOCK_HIDHIDE_ACCESS_OUTPUT
 function Request([string]$line,[switch]$Fragmented) {
     $pipe=[IO.Pipes.NamedPipeClientStream]::new('.',$name,[IO.Pipes.PipeDirection]::InOut,[IO.Pipes.PipeOptions]::Asynchronous)
     try {
@@ -28,7 +28,7 @@ function Request([string]$line,[switch]$Fragmented) {
 }
 try {
     $env:VDS_HIDHIDE_CLI=$Mock
-    $env:DSEMU_MOCK_HIDHIDE_STATE=Join-Path $run 'mock.txt'
+    $env:DS5LINK_MOCK_HIDHIDE_STATE=Join-Path $run 'mock.txt'
     $process=Start-Process $Engine -ArgumentList @('--db-path',('"'+$database+'"'),'--log',('"'+(Join-Path $run 'log.txt')+'"'),'--pipe',('"\\.\pipe\'+$name+'"')) -WindowStyle Hidden -PassThru -RedirectStandardError (Join-Path $run 'stderr.txt')
     Start-Sleep -Milliseconds 1000
     $reply=Request '{"protocolVersion":1,"id":"one","command":"getState"}' -Fragmented
@@ -60,6 +60,20 @@ try {
     if($reply.ok){throw 'Out-of-range input settings accepted'}
     $reply=Request '{"protocolVersion":1,"id":"input-events","command":"getInputEvents","afterSequence":0}'
     if(!$reply.ok -or $reply.payload.enabled -or !$reply.payload.epoch -or $reply.payload.events.Count -ne 0){throw 'Paused input event stream invalid'}
+    $effectOptions=@{left=@{mode='game';strength=3;start=2;end=7;frequency=15};right=@{mode='game';strength=3;start=2;end=7;frequency=15};ledMode='game';red=10;green=132;blue=255;brightness=60;speed=50;audioEnabled=$false;bassOnly=$true;sensitivity=100;limit=35;gate=3}
+    $reply=Request (@{protocolVersion=1;id='effect-save';command='setEffectOptions';options=$effectOptions}|ConvertTo-Json -Depth 5 -Compress)
+    if(!$reply.ok -or $reply.payload.options.limit -ne 35 -or !(Test-Path ($database+'.effects.json'))){throw 'Effect settings were not saved'}
+    $effectOptions.limit=81
+    $reply=Request (@{protocolVersion=1;id='effect-invalid';command='setEffectOptions';options=$effectOptions}|ConvertTo-Json -Depth 5 -Compress)
+    if($reply.ok){throw 'Unsafe audio effect limit accepted'}
+    $reply=Request '{"protocolVersion":1,"id":"effect-level-invalid","command":"getEffects","audioLevel":81}'
+    if($reply.ok){throw 'Out-of-range transient audio level accepted'}
+    $reply=Request '{"protocolVersion":1,"id":"effect-state","command":"getEffects","audioLevel":0}'
+    if(!$reply.ok -or !$reply.payload.leaseActive -or $reply.payload.options.limit -ne 35 -or $reply.payload.leftOwned){throw 'Effect lease or rejected-setting preservation failed'}
+    foreach($samples in @(@(1,2), (@(128)*64))) {
+        $reply=Request (@{protocolVersion=1;id='pcm-invalid';command='getEffects';audioFrames=@(@{samples=$samples;tick=1})}|ConvertTo-Json -Depth 6 -Compress)
+        if($reply.ok){throw 'Malformed PCM waveform accepted'}
+    }
     Set-Content ($database+'.hidhide-recovery.json') '{"schema":99}'
     $reply=Request '{"protocolVersion":1,"id":"pending-recovery","command":"getState"}'
     if(!$reply.ok -or $reply.payload.state -ne 'Error' -or !$reply.payload.recoveryPending){throw 'Pending recovery was reported as released'}
@@ -68,19 +82,19 @@ try {
     Remove-Item -LiteralPath ($database+'.hidhide-recovery.json')
     $reply=Request '{"protocolVersion":1,"id":"clear-recovery","command":"recover"}'
     if(!$reply.ok -or $reply.payload.state -ne 'Paused'){throw 'Completed recovery did not release controller'}
-    Set-Content -LiteralPath $env:DSEMU_MOCK_HIDHIDE_STATE -Value @('--cloak-on','--inv-on','--dev-hide "HID\OTHER"','--app-reg "C:\OtherApp.exe"')
+    Set-Content -LiteralPath $env:DS5LINK_MOCK_HIDHIDE_STATE -Value @('--cloak-on','--inv-on','--dev-hide "HID\OTHER"','--app-reg "C:\OtherApp.exe"')
     $reply=Request '{"protocolVersion":1,"id":"normalize-hidhide","command":"normalizeHidHide"}'
     if(!$reply.ok -or $reply.payload.enabled -or $reply.payload.state -ne 'Paused'){throw 'HidHide repair did not preserve pause'}
-    $mockState=Get-Content $env:DSEMU_MOCK_HIDHIDE_STATE -Raw
+    $mockState=Get-Content $env:DS5LINK_MOCK_HIDHIDE_STATE -Raw
     if($mockState -notmatch '--inv-off' -or $mockState -notmatch '--cloak-on' -or $mockState -notmatch 'HID\\OTHER' -or $mockState -notmatch 'OtherApp.exe'){throw 'HidHide repair changed unrelated configuration'}
     $reply=Request '{"protocolVersion":1,"id":"normalize-hidhide-again","command":"normalizeHidHide"}'
     if(!$reply.ok){throw 'HidHide repair was not idempotent'}
     # Simulate startup recovery failing because the HidHide GUI owns the handle.
     Stop-Process -Id $process.Id;$process.WaitForExit()
     @{schema=1;device='HID\TARGET';daemon=[IO.Path]::GetFullPath($Engine);hideAdded=$true;cloakEnabled=$false;appAdded=$false}|ConvertTo-Json|Set-Content ($database+'.hidhide-recovery.json') -Encoding utf8
-    $env:DSEMU_MOCK_HIDHIDE_ACCESS_OUTPUT='1'
+    $env:DS5LINK_MOCK_HIDHIDE_ACCESS_OUTPUT='1'
     $process=Start-Process $Engine -ArgumentList @('--db-path',('"'+$database+'"'),'--log',('"'+(Join-Path $run 'restart-log.txt')+'"'),'--pipe',('"\\.\pipe\'+$name+'"')) -WindowStyle Hidden -PassThru -RedirectStandardError (Join-Path $run 'restart-stderr.txt')
-    $env:DSEMU_MOCK_HIDHIDE_ACCESS_OUTPUT=$previousAccessOutput
+    $env:DS5LINK_MOCK_HIDHIDE_ACCESS_OUTPUT=$previousAccessOutput
     Start-Sleep -Milliseconds 1000
     $reply=Request '{"protocolVersion":1,"id":"startup-recovery-failure","command":"getState"}'
     if(!$reply.ok -or !$reply.payload.recoveryPending -or $reply.payload.state -ne 'Error'){throw 'Startup recovery failure prevented diagnostic control access'}
@@ -93,6 +107,6 @@ try {
 } finally {
     if($process -and !$process.HasExited){Stop-Process -Id $process.Id;$process.WaitForExit()}
     $env:VDS_HIDHIDE_CLI=$previousCli
-    $env:DSEMU_MOCK_HIDHIDE_STATE=$previousState
-    $env:DSEMU_MOCK_HIDHIDE_ACCESS_OUTPUT=$previousAccessOutput
+    $env:DS5LINK_MOCK_HIDHIDE_STATE=$previousState
+    $env:DS5LINK_MOCK_HIDHIDE_ACCESS_OUTPUT=$previousAccessOutput
 }

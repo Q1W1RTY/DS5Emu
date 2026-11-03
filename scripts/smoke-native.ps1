@@ -10,7 +10,7 @@ $daemon=Join-Path $bin 'vdsd.exe'
 $control=Join-Path $bin 'vdsctl.exe'
 $process=$null
 $address=$null
-$probe=Join-Path $bin 'dsemu_hardware_probe.exe'
+$probe=Join-Path $bin 'ds5link_hardware_probe.exe'
 if(Test-Path $probe) { & $probe | Set-Content (Join-Path $run 'audio-before.txt') }
 if (Get-Process vdsd,DSX -ErrorAction SilentlyContinue) { throw 'Close the existing controller owner before the smoke run.' }
 $baseline=@(& $cli --cloak-state --inv-state --app-list --dev-list)
@@ -38,7 +38,7 @@ try {
         if($LASTEXITCODE) {throw 'Audio hardware test failed'}
     }
     if($HidTest) {
-        & (Join-Path $bin 'dsemu_hid_probe.exe') 2>&1 | Set-Content (Join-Path $run 'hid-test.txt')
+        & (Join-Path $bin 'ds5link_hid_probe.exe') 2>&1 | Set-Content (Join-Path $run 'hid-test.txt')
         if($LASTEXITCODE) {throw 'HID hardware test failed'}
     }
     Start-Sleep $Seconds

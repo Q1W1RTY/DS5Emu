@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'qa-common.ps1')
 function Read-Devices {
  @(Get-PnpDevice -PresentOnly | Where-Object {
-  $_.InstanceId -like '*DSEmu-DualSense-Port-0*' -or
+  $_.InstanceId -like '*DS5Link-DualSense-Port-0*' -or
   ($_.Class -eq 'AudioEndpoint' -and $_.FriendlyName -like '*DualSense*')
  } | Select-Object Class,InstanceId,Status)
 }
@@ -20,16 +20,16 @@ function Wait-Devices([bool]$Absent) {
  } while([DateTime]::UtcNow -lt $until)
  throw "Virtual device topology did not settle (absent=$Absent)"
 }
-$null=Wait-DSEmuState Active
+$null=Wait-DS5LinkState Active
 $baseline=Read-Devices
 $results=@()
 try {
  for($i=1;$i -le $Cycles;++$i){
   $start=[DateTime]::UtcNow
-  $null=Invoke-DSEmu pause;$null=Wait-DSEmuState Paused
+  $null=Invoke-DS5Link pause;$null=Wait-DS5LinkState Paused
   $null=Wait-Devices $true
-  if(Test-Path "$env:ProgramData\DSEmu\bridge.db.hidhide-recovery.json"){throw "Cycle $i retained HidHide recovery journal"}
-  $null=Invoke-DSEmu enable;$state=Wait-DSEmuState Active
+  if(Test-Path "$env:ProgramData\DS5Link\bridge.db.hidhide-recovery.json"){throw "Cycle $i retained HidHide recovery journal"}
+  $null=Invoke-DS5Link enable;$state=Wait-DS5LinkState Active
   $devices=Wait-Devices $false
   $results+= [pscustomobject]@{cycle=$i;at=$start.ToString('o');elapsedSeconds=([DateTime]::UtcNow-$start).TotalSeconds;state=$state.state;devices=$devices}
   [pscustomobject]@{completed=$false;baseline=$baseline;cycles=$results}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $Output -Encoding utf8

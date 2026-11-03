@@ -34,6 +34,6 @@
 
 ## Итоговый локальный пакет
 
-artifacts/releases/DS5Emu-0.1.5-20261102-055727/DS5Emu-Setup.exe. Последний пакет прошёл qa-setup; установленный UI и native сверены с его release.json. Сразу после установки подтверждено сохранение Paused; на последнем снимке эмуляция Active по Bluetooth, UI открыт. Снимки состояний разделены в final.json.
+artifacts/releases/DS5Link-0.1.5-20261102-055727/DS5Link-Setup.exe. Последний пакет прошёл qa-setup; установленный UI и native сверены с его release.json. Сразу после установки подтверждено сохранение Paused; на последнем снимке эмуляция Active по Bluetooth, UI открыт. Снимки состояний разделены в final.json.
 
 Тестовые каталоги DS5InstallQa на дисках и в ProgramData и их собственные ключи реестра удалены scripts/qa-cleanup-fixtures.ps1. PID рабочей службы сохранён; протоколы прогонов оставлены в artifacts. Резервная копия рабочей версии для отката не удалялась.

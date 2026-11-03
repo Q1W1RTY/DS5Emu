@@ -1,10 +1,10 @@
 param([Parameter(Mandatory)][string]$Output)
 $ErrorActionPreference='Stop'
-if(!('DSEmuBluetoothSnapshot' -as [type])){
+if(!('DS5LinkBluetoothSnapshot' -as [type])){
  Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public static class DSEmuBluetoothSnapshot {
+public static class DS5LinkBluetoothSnapshot {
  [StructLayout(LayoutKind.Sequential)] public struct SystemTime {public ushort Year,Month,DayOfWeek,Day,Hour,Minute,Second,Milliseconds;}
  [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)] public struct Info {
   public uint Size;public ulong Address;public uint DeviceClass;
@@ -24,9 +24,9 @@ public static class DSEmuBluetoothSnapshot {
 }
 '@
 }
-$records=@(Get-Content "$env:ProgramData\DSEmu\bridge.db"|Where-Object{$_}|ForEach-Object{$_|ConvertFrom-Json})
+$records=@(Get-Content "$env:ProgramData\DS5Link\bridge.db"|Where-Object{$_}|ForEach-Object{$_|ConvertFrom-Json})
 if($records.Count -ne 1){throw 'Expected one owned configured controller'}
 $address=[Convert]::ToUInt64(($records[0].address -replace ':',''),16)
-$status=[uint32]0;$info=[DSEmuBluetoothSnapshot]::Read($address,[ref]$status)
-[pscustomobject]@{at=[DateTime]::UtcNow.ToString('o');status=$status;connected=$info.Connected;remembered=$info.Remembered;authenticated=$info.Authenticated;radioAvailable=[DSEmuBluetoothSnapshot]::RadioAvailable()}|ConvertTo-Json|Set-Content -LiteralPath $Output -Encoding utf8
+$status=[uint32]0;$info=[DS5LinkBluetoothSnapshot]::Read($address,[ref]$status)
+[pscustomobject]@{at=[DateTime]::UtcNow.ToString('o');status=$status;connected=$info.Connected;remembered=$info.Remembered;authenticated=$info.Authenticated;radioAvailable=[DS5LinkBluetoothSnapshot]::RadioAvailable()}|ConvertTo-Json|Set-Content -LiteralPath $Output -Encoding utf8
 if($status -ne 0){throw "BluetoothGetDeviceInfo failed: $status"}

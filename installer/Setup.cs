@@ -14,11 +14,11 @@ using Microsoft.Win32;
 using System.Security.AccessControl;
 using System.Security.Principal;
 
-[assembly: AssemblyTitle("Установка DS5Emu")]
+[assembly: AssemblyTitle("Установка DS5Link")]
 
 internal static class Setup {
  internal static string Work;
- internal static string Log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DS5Emu", "Setup", "last-setup.log");
+ internal static string Log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DS5Link", "Setup", "last-setup.log");
  [STAThread] static int Main(string[] args) {
   Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
   try {
@@ -33,14 +33,14 @@ internal static class Setup {
     try { Extract();Verify();return RunElevated(args[1],args[2],args.Length==4); } finally {Cleanup();}
    }
    Directory.CreateDirectory(Path.GetDirectoryName(Log));
-   File.WriteAllText(Log, DateTime.Now.ToString("o") + " DS5Emu Setup\r\n", Encoding.UTF8);
+   File.WriteAllText(Log, DateTime.Now.ToString("o") + " DS5Link Setup\r\n", Encoding.UTF8);
    if (args.Length == 2 && args[0] == "--verify-only") {
     try { Extract(); Verify(); File.WriteAllText(args[1], "{\"ok\":true,\"installed\":false,\"payloadFiles\":" + Directory.GetFiles(Work,"*",SearchOption.AllDirectories).Length + "}"); return 0; }
     catch (Exception e) { Write(e.ToString()); File.WriteAllText(args[1], "{\"ok\":false}"); return 1; }
     finally { Cleanup(); }
    }
    using (var wizard = new Wizard()) { Application.Run(wizard); return wizard.ExitCode; }
-  } catch (Exception e) { MessageBox.Show(e.Message, "DS5Emu", MessageBoxButtons.OK,MessageBoxIcon.Error); return 1; }
+  } catch (Exception e) { MessageBox.Show(e.Message, "DS5Link", MessageBoxButtons.OK,MessageBoxIcon.Error); return 1; }
  }
  internal static int DependencyScript(string arguments) {
   var info=new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"WindowsPowerShell","v1.0","powershell.exe"),"-NoProfile -ExecutionPolicy Bypass -File \""+Path.Combine(Work,"Dependencies.ps1")+"\" "+arguments){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
@@ -55,10 +55,10 @@ internal static class Setup {
  internal static void Extract() {
   Cleanup();
   bool elevated=new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
-  Work = Path.Combine(elevated?Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles):Path.GetTempPath(), "DS5Emu-Setup-" + Guid.NewGuid().ToString("N"));
+  Work = Path.Combine(elevated?Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles):Path.GetTempPath(), "DS5Link-Setup-" + Guid.NewGuid().ToString("N"));
   if(elevated){var acl=new DirectorySecurity();acl.SetAccessRuleProtection(true,false);acl.SetOwner(new SecurityIdentifier("S-1-5-32-544"));foreach(var sid in new[]{"S-1-5-18","S-1-5-32-544"})acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid),FileSystemRights.FullControl,InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit,PropagationFlags.None,AccessControlType.Allow));Directory.CreateDirectory(Work,acl);}else Directory.CreateDirectory(Work);
   if(elevated)Log=Work+".log"; // Protected sibling survives temporary payload cleanup.
-  using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("DS5Emu.Payload"))
+  using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("DS5Link.Payload"))
   using (var zip = new ZipArchive(stream,ZipArchiveMode.Read)) {
    foreach (var entry in zip.Entries) {
     var path = Path.GetFullPath(Path.Combine(Work,entry.FullName.Replace('/',Path.DirectorySeparatorChar)));
@@ -86,7 +86,7 @@ internal static class Setup {
  internal static void Cleanup() {
   if (Work == null) return;
   var parent = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar);
-  if ((Path.GetDirectoryName(Path.GetFullPath(Work)).Equals(parent,StringComparison.OrdinalIgnoreCase) || Path.GetDirectoryName(Path.GetFullPath(Work)).Equals(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),StringComparison.OrdinalIgnoreCase)) && Path.GetFileName(Work).StartsWith("DS5Emu-Setup-",StringComparison.Ordinal)) {
+  if ((Path.GetDirectoryName(Path.GetFullPath(Work)).Equals(parent,StringComparison.OrdinalIgnoreCase) || Path.GetDirectoryName(Path.GetFullPath(Work)).Equals(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),StringComparison.OrdinalIgnoreCase)) && Path.GetFileName(Work).StartsWith("DS5Link-Setup-",StringComparison.Ordinal)) {
    try { Directory.Delete(Work,true); } catch (Exception e) { Write("Temporary cleanup: " + e.Message); }
   }
  }
@@ -115,19 +115,19 @@ internal sealed class Wizard : Form {
 
  internal static string RegisteredDirectory() {
   using(var machine=RegistryKey.OpenBaseKey(RegistryHive.LocalMachine,RegistryView.Registry64)) {
-   foreach(var keyName in new[]{@"SOFTWARE\DSEmu",@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu"})
+   foreach(var keyName in new[]{@"SOFTWARE\DS5Link",@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DS5Link"})
     using(var key=machine.OpenSubKey(keyName)) { var value=key==null?null:key.GetValue("InstallLocation") as string; if(!String.IsNullOrWhiteSpace(value))return Path.GetFullPath(value).TrimEnd('\\'); }
   }
   return null;
  }
  internal Wizard() {
   installationDirectory=RegisteredDirectory(); updating=installationDirectory!=null;
-  if(!updating)installationDirectory=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"DS5Emu");
-  Text="Установка DS5Emu";ClientSize=new Size(620,690);FormBorderStyle=FormBorderStyle.None;
+  if(!updating)installationDirectory=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"DS5Link");
+  Text="Установка DS5Link";ClientSize=new Size(620,690);FormBorderStyle=FormBorderStyle.None;
   Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);MaximizeBox=false;StartPosition=FormStartPosition.CenterScreen;
   BackColor=Color.FromArgb(22,22,24);ForeColor=Color.FromArgb(240,241,243);Font=new Font("Segoe UI",10);AutoScaleMode=AutoScaleMode.Dpi;
   SetStyle(ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint,true);
-  brand.SetBounds(24,17,450,26);brand.Text="DS5Emu";brand.Font=new Font("Segoe UI Semibold",10);
+  brand.SetBounds(24,17,450,26);brand.Text="DS5Link";brand.Font=new Font("Segoe UI Semibold",10);
   windowMinimize.SetBounds(524,12,30,30);windowMinimize.Text="−";windowMinimize.AccessibleName="Свернуть";
   windowClose.SetBounds(564,12,30,30);windowClose.Text="×";windowClose.AccessibleName="Закрыть";
   windowMinimize.Click+=(sender,args)=>WindowState=FormWindowState.Minimized;
@@ -136,7 +136,7 @@ internal sealed class Wizard : Form {
   MouseDown+=drag;brand.MouseDown+=drag;
   heroCard.SetBounds(20,58,580,96);dependencyCard.SetBounds(20,166,580,232);pathCard.SetBounds(20,410,580,136);
   var logo=new PictureBox();logo.SetBounds(18,22,52,52);logo.SizeMode=PictureBoxSizeMode.Zoom;logo.Image=Icon.ToBitmap();heroCard.Controls.Add(logo);
-  title.SetBounds(88,18,470,32);title.Font=new Font("Segoe UI Semibold",19);title.Text=updating?"Обновление DS5Emu":"Установка DS5Emu";
+  title.SetBounds(88,18,470,32);title.Font=new Font("Segoe UI Semibold",19);title.Text=updating?"Обновление DS5Link":"Установка DS5Link";
   subtitle.SetBounds(90,56,460,23);subtitle.Font=new Font("Segoe UI",9);subtitle.ForeColor=Color.FromArgb(160,160,168);subtitle.Text="DualSense по Bluetooth · PS5 и Xbox 360";
   heroCard.Controls.AddRange(new Control[]{title,subtitle});
   dependencyHeading.SetBounds(18,15,544,26);dependencyHeading.Text="Проверяем компоненты…";dependencyHeading.Font=new Font("Segoe UI Semibold",11);
@@ -153,13 +153,13 @@ internal sealed class Wizard : Form {
   browse.SetBounds(452,47,110,32);browse.Text="Обзор…";browse.Enabled=!updating;
   pathHint.SetBounds(18,90,544,34);pathHint.ForeColor=Color.FromArgb(155,155,163);pathHint.Font=new Font("Segoe UI",8.5f);
   pathHint.Text=updating?"Обновление сохранит папку установки и ваши настройки.":"Выберите пустую папку на постоянном локальном диске.";
-  browse.Click+=(sender,args)=>{using(var dialog=new FolderBrowserDialog()){dialog.Description="Папка установки DS5Emu";if(Directory.Exists(installPath.Text))dialog.SelectedPath=installPath.Text;if(dialog.ShowDialog(this)==DialogResult.OK)installPath.Text=dialog.SelectedPath;}};
+  browse.Click+=(sender,args)=>{using(var dialog=new FolderBrowserDialog()){dialog.Description="Папка установки DS5Link";if(Directory.Exists(installPath.Text))dialog.SelectedPath=installPath.Text;if(dialog.ShowDialog(this)==DialogResult.OK)installPath.Text=dialog.SelectedPath;}};
   pathCard.Controls.AddRange(new Control[]{pathLabel,pathWell,browse,pathHint});
   progress.SetBounds(28,560,564,4);progress.Visible=false;
   status.SetBounds(28,575,564,45);status.ForeColor=Color.FromArgb(160,160,168);status.Font=new Font("Segoe UI",9);
-  next.SetBounds(340,632,252,38);next.Text=updating?"Обновить DS5Emu":"Установить DS5Emu";
+  next.SetBounds(340,632,252,38);next.Text=updating?"Обновить DS5Link":"Установить DS5Link";
   close.SetBounds(28,632,140,38);close.Text="Отмена";
-  launch.SetBounds(28,575,280,30);launch.Text="Открыть DS5Emu";launch.Checked=true;launch.Visible=false;
+  launch.SetBounds(28,575,280,30);launch.Text="Открыть DS5Link";launch.Checked=true;launch.Visible=false;
   Controls.AddRange(new Control[]{brand,windowMinimize,windowClose,heroCard,dependencyCard,pathCard,status,progress,next,close,launch});
   next.Enabled=false;
   Shown+=async (sender,args)=>await CheckDependencies();
@@ -204,7 +204,7 @@ internal sealed class Wizard : Form {
    });
    if(code!=0 && code!=3010)throw new IOException("Компонент не установлен (код "+code+").");
    if(code==3010)reboot=true;
-  }catch(Exception error){MessageBox.Show(this,error.Message,"DS5Emu",MessageBoxButtons.OK,MessageBoxIcon.Error);}
+  }catch(Exception error){MessageBox.Show(this,error.Message,"DS5Link",MessageBoxButtons.OK,MessageBoxIcon.Error);}
   try{await RefreshDependencies();}catch(Exception error){dependenciesReady=false;status.Text=error.Message;}
   busy=false;close.Enabled=true;next.Enabled=dependenciesReady;
  }
@@ -224,16 +224,16 @@ internal sealed class Wizard : Form {
     BeginInvoke((Action)(()=>status.Text="Установка компонентов. Подтвердите запрос Windows…"));
     return RunInstallerScript(false);
    });
-   if(code!=0 && code!=3010)throw new IOException("Установка не завершена (код " + code + ").\r\nЖурнал: " + Setup.Log + "\r\nПодробности: %ProgramData%\\DSEmu\\setup.log");
+   if(code!=0 && code!=3010)throw new IOException("Установка не завершена (код " + code + ").\r\nЖурнал: " + Setup.Log + "\r\nПодробности: %ProgramData%\\DS5Link\\setup.log");
    reboot=reboot || code==3010; finished=true; ExitCode=reboot?3010:code; title.Text="Готово";
    dependencyCard.Visible=false;pathCard.Visible=false;subtitle.Text="Приложение установлено";
    heroCard.Height=96;
    Controls.Add(text);text.SetBounds(38,180,544,250);text.ForeColor=ForeColor;text.Font=new Font("Segoe UI",10);
    pathLabel.Visible=false;installPath.Visible=false;browse.Visible=false;pathHint.Visible=false;
-   text.Text=reboot ? "DS5Emu установлен.\r\n\r\nДрайверам нужна перезагрузка Windows. Сохраните работу и перезагрузите компьютер, затем откройте DS5Emu из меню «Пуск»." : "DS5Emu установлен.\r\n\r\n1. Сопрягите DualSense с Windows по Bluetooth.\r\n    Удерживайте Create + PS до мигания индикатора,\r\n    затем добавьте Bluetooth-устройство в Windows.\r\n2. Откройте DS5Emu и выберите режим PS5 или Xbox.\r\n3. Для нативных эффектов отключите Steam Input\r\n    в настройках нужной игры, если он мешает.";
+   text.Text=reboot ? "DS5Link установлен.\r\n\r\nДрайверам нужна перезагрузка Windows. Сохраните работу и перезагрузите компьютер, затем откройте DS5Link из меню «Пуск»." : "DS5Link установлен.\r\n\r\n1. Сопрягите DualSense с Windows по Bluetooth.\r\n    Удерживайте Create + PS до мигания индикатора,\r\n    затем добавьте Bluetooth-устройство в Windows.\r\n2. Откройте DS5Link и выберите режим PS5 или Xbox.\r\n3. Для нативных эффектов отключите Steam Input\r\n    в настройках нужной игры, если он мешает.";
    status.Text=reboot ? "Автоматическая перезагрузка не выполняется." : "Установлено: " + installationDirectory;
    if(!reboot)status.Top=535;launch.Visible=!reboot; next.Text="Завершить"; close.Visible=false;
-  }catch(Exception e){ExitCode=1;Setup.Write(e.ToString()); status.Text="Установка не завершена. Можно повторить."; MessageBox.Show(this,e.Message,"DS5Emu",MessageBoxButtons.OK,MessageBoxIcon.Error);}
+  }catch(Exception e){ExitCode=1;Setup.Write(e.ToString()); status.Text="Установка не завершена. Можно повторить."; MessageBox.Show(this,e.Message,"DS5Link",MessageBoxButtons.OK,MessageBoxIcon.Error);}
   finally{busy=false; next.Enabled=true; close.Enabled=true; progress.Visible=false;if(!finished){installPath.Enabled=true;browse.Enabled=!updating;}}
   if(!finished)await CheckDependencies();
  }
@@ -249,7 +249,7 @@ internal sealed class Wizard : Form {
   }
  }
  void OpenApp() {
-  try{Process.Start(new ProcessStartInfo(Path.Combine(installationDirectory,"DS5Emu.exe"),"--show"){UseShellExecute=true,WorkingDirectory=installationDirectory});}
-  catch(Exception e){MessageBox.Show(this,e.Message,"DS5Emu");}
+  try{Process.Start(new ProcessStartInfo(Path.Combine(installationDirectory,"DS5Link.exe"),"--show"){UseShellExecute=true,WorkingDirectory=installationDirectory});}
+  catch(Exception e){MessageBox.Show(this,e.Message,"DS5Link");}
  }
 }

@@ -1,7 +1,7 @@
 param()
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-$before=(Get-CimInstance Win32_Service -Filter "Name='DSEmuBridge'").ProcessId
+$before=(Get-CimInstance Win32_Service -Filter "Name='DS5LinkBridge'").ProcessId
 $removed=@()
 foreach($report in Get-ChildItem (Join-Path $root 'artifacts') -Directory -Filter 'install-path-qa-*'){
  $file=Join-Path $report.FullName 'result.json';if(!(Test-Path -LiteralPath $file)){continue}
@@ -24,5 +24,5 @@ foreach($report in Get-ChildItem (Join-Path $root 'artifacts') -Directory -Filte
   if(Test-Path -LiteralPath $key){Remove-Item -LiteralPath $key -Recurse}
  }
 }
-if((Get-CimInstance Win32_Service -Filter "Name='DSEmuBridge'").ProcessId -ne $before){throw 'Working service PID changed'}
+if((Get-CimInstance Win32_Service -Filter "Name='DS5LinkBridge'").ProcessId -ne $before){throw 'Working service PID changed'}
 @{ok=$true;removed=$removed;workingServicePidPreserved=$true}|ConvertTo-Json -Depth 4|Set-Content (Join-Path $root 'artifacts\fixture-cleanup.json') -Encoding utf8

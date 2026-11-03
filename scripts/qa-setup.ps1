@@ -2,7 +2,7 @@
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $ReleaseDirectory=[IO.Path]::GetFullPath($ReleaseDirectory)
-$exe=Join-Path $ReleaseDirectory 'DS5Emu-Setup.exe'
+$exe=Join-Path $ReleaseDirectory 'DS5Link-Setup.exe'
 $qa=Join-Path $ReleaseDirectory 'qa';New-Item -ItemType Directory $qa -Force|Out-Null
 function Verify-Exe([string]$Path,[string]$Report,[int]$ExpectedCode){
  $child=Start-Process $Path -ArgumentList @('--verify-only',('"'+$Report+'"')) -PassThru -Wait
@@ -33,10 +33,10 @@ Set-Content (Join-Path $fixture 'example.txt') 'tampered'
 (('0'*64)+'  example.txt')|Set-Content (Join-Path $fixture 'files.sha256') -Encoding ascii
 $zip=Join-Path $qa 'corrupt.zip';Compress-Archive (Join-Path $fixture '*') $zip -Force
 $fixtureExe=Join-Path $qa 'Corrupt-Setup.exe'
-& "$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /platform:x64 "/out:$fixtureExe" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll "/resource:$zip,DS5Emu.Payload" (Join-Path $root 'installer\Setup.cs') (Join-Path $root 'installer\SetupStyle.cs')
+& "$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /platform:x64 "/out:$fixtureExe" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll "/resource:$zip,DS5Link.Payload" (Join-Path $root 'installer\Setup.cs') (Join-Path $root 'installer\SetupStyle.cs')
 if($LASTEXITCODE){throw 'Fixture compilation failed'}
 Verify-Exe $fixtureExe (Join-Path $qa 'corrupt.json') 1
-foreach($script in @('Install.ps1','Uninstall.ps1','InstallPaths.ps1','Dependencies.ps1')){
+foreach($script in @('Install.ps1','Uninstall.ps1','InstallPaths.ps1','OwnedFiles.ps1','Dependencies.ps1')){
  $tokens=$null;$errors=$null
  [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $payload $script),[ref]$tokens,[ref]$errors)|Out-Null
  if($errors){throw "PowerShell parser errors: $script"}

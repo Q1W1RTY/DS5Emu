@@ -1,7 +1,7 @@
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 Add-Type -AssemblyName System.Drawing
-$destination=Join-Path $root 'src\DSEmu.App\Assets'
+$destination=Join-Path $root 'src\DS5Link.App\Assets'
 New-Item -ItemType Directory $destination -Force|Out-Null
 function Convert-PngIcon([string]$Source,[string]$Output,[int[]]$Sizes){
  $image=[Drawing.Image]::FromFile($Source)
@@ -35,6 +35,6 @@ function Convert-PngIcon([string]$Source,[string]$Output,[int[]]$Sizes){
  }finally{$image.Dispose()}
 }
 # Package generated artwork without redrawing it; retain transparent alpha.
-Convert-PngIcon (Join-Path $root 'assets\brand\DS5Emu.png') (Join-Path $destination 'DS5Emu.ico') @(16,20,24,32,40,48,64,128,256)
-Convert-PngIcon (Join-Path $root 'assets\brand\DS5Emu-tray.png') (Join-Path $destination 'DS5Emu.Tray.ico') @(16,20,24,32,40,48,64)
+Convert-PngIcon (Join-Path $root 'assets\brand\DS5Link.png') (Join-Path $destination 'DS5Link.ico') @(16,20,24,32,40,48,64,128,256)
+Convert-PngIcon (Join-Path $root 'assets\brand\DS5Link-tray.png') (Join-Path $destination 'DS5Link.Tray.ico') @(16,20,24,32,40,48,64)
 Write-Host 'Packaged generated app and dedicated tray artwork into multiresolution ICO files.'

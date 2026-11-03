@@ -1,6 +1,6 @@
 ﻿# Shared path rules for setup, upgrades and removal. No filesystem mutations here.
 function Get-DS5RegisteredInstall {
- foreach($key in @('HKLM:\SOFTWARE\DSEmu','HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DSEmu')){
+ foreach($key in @('HKLM:\SOFTWARE\DS5Link','HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DS5Link')){
   $value=(Get-ItemProperty -LiteralPath $key -Name InstallLocation -ErrorAction SilentlyContinue).InstallLocation
   if($value){return [IO.Path]::GetFullPath($value).TrimEnd('\')}
  }
@@ -8,8 +8,8 @@ function Get-DS5RegisteredInstall {
 }
 function Resolve-DS5InstallPath([string]$Requested) {
  $registered=Get-DS5RegisteredInstall
- if(!$Requested){$Requested=if($registered){$registered}else{Join-Path $env:ProgramFiles 'DS5Emu'}}
- if($Requested -notmatch '^[A-Za-z]:\\' -or $Requested -match '["<>|?*\x00-\x1f]'){throw 'Укажите полный путь на локальном диске, например D:\Apps\DS5Emu.'}
+ if(!$Requested){$Requested=if($registered){$registered}else{Join-Path $env:ProgramFiles 'DS5Link'}}
+ if($Requested -notmatch '^[A-Za-z]:\\' -or $Requested -match '["<>|?*\x00-\x1f]'){throw 'Укажите полный путь на локальном диске, например D:\Apps\DS5Link.'}
  $resolved=[IO.Path]::GetFullPath($Requested).TrimEnd('\')
  $root=[IO.Path]::GetPathRoot($resolved)
  if($resolved.TrimEnd('\') -eq $root.TrimEnd('\')){throw 'Нельзя устанавливать приложение прямо в корень диска.'}
@@ -23,7 +23,7 @@ function Resolve-DS5InstallPath([string]$Requested) {
  foreach($blocked in @($env:ProgramFiles,${env:ProgramFiles(x86)})){
   if($blocked -and $resolved.Equals($blocked.TrimEnd('\'),[StringComparison]::OrdinalIgnoreCase)){throw 'Укажите отдельную папку приложения, а не общий каталог программ.'}
  }
- if($registered -and !$resolved.Equals($registered,[StringComparison]::OrdinalIgnoreCase)){throw "DS5Emu уже установлен в $registered. Для переноса сначала удалите приложение; настройки будут сохранены."}
+ if($registered -and !$resolved.Equals($registered,[StringComparison]::OrdinalIgnoreCase)){throw "DS5Link уже установлен в $registered. Для переноса сначала удалите приложение; настройки будут сохранены."}
  return $resolved
 }
 function Assert-DS5NoReparse([string]$Path) {
@@ -41,7 +41,7 @@ function Assert-DS5InstallTarget([string]$Path) {
  if(!$drive.IsReady -or $drive.DriveType -ne [IO.DriveType]::Fixed -or $drive.DriveFormat -notin @('NTFS','ReFS')){throw 'Выберите локальный постоянный диск с поддержкой прав доступа NTFS/ReFS.'}
  Assert-DS5NoReparse $Path
  $registered=Get-DS5RegisteredInstall
- if((Test-Path -LiteralPath $Path) -and (!$registered -or !$Path.Equals($registered,[StringComparison]::OrdinalIgnoreCase)) -and @(Get-ChildItem -LiteralPath $Path -Force).Count){throw 'Выбранная папка не пуста. Создайте отдельную пустую папку для DS5Emu.'}
+ if((Test-Path -LiteralPath $Path) -and (!$registered -or !$Path.Equals($registered,[StringComparison]::OrdinalIgnoreCase)) -and @(Get-ChildItem -LiteralPath $Path -Force).Count){throw 'Выбранная папка не пуста. Создайте отдельную пустую папку для DS5Link.'}
  # The executable runs as SYSTEM: writable/replaceable ancestors are unsafe.
  $trusted=@('S-1-5-18','S-1-5-32-544','S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
  $cursor=[IO.Path]::GetDirectoryName($Path)

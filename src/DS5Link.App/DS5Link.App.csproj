@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\DS5Link.ico</ApplicationIcon>
+    <AssemblyName>DS5Link</AssemblyName>
+    <RootNamespace>DS5Link</RootNamespace>
+    <Product>DS5Link</Product>
+    <Title>DS5Link</Title>
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\VERSION').Trim())</Version>
+    <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <Resource Include="Assets\DS5Link.ico" />
+    <Resource Include="Assets\DS5Link.Tray.ico" />
+    <Resource Include="Assets\DualSense-card.png" />
+  </ItemGroup>
+</Project>

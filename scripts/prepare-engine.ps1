@@ -1,7 +1,7 @@
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $engine=Join-Path $root 'engine\vds'
-$patch=Join-Path $root 'patches\vds\0001-dsemu-bootstrap.patch'
+$patch=Join-Path $root 'patches\vds\0001-ds5link-bootstrap.patch'
 if (!(Test-Path (Join-Path $engine 'CMakeLists.txt'))) {
     git -C $root submodule update --init engine/vds
     if ($LASTEXITCODE) {throw 'Submodule initialization failed'}
@@ -20,4 +20,4 @@ if ($alreadyApplied) {return}
 git -C $engine apply --check $patch
 if ($LASTEXITCODE) {throw 'Patch conflicts with local engine changes; nothing overwritten'}
 git -C $engine apply $patch
-if ($LASTEXITCODE) {throw 'Failed to apply DSEmu engine patch'}
+if ($LASTEXITCODE) {throw 'Failed to apply DS5Link engine patch'}

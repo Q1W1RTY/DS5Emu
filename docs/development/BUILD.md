@@ -4,15 +4,15 @@
 
 ```powershell
 git clone --recurse-submodules https://github.com/Q1W1RTY/DS5Emu.git
-cd DS5Emu
+cd DS5Link
 .\scripts\prepare-engine.ps1
 .\scripts\build.ps1
 .\scripts\test.ps1
 ```
 
-Движок закреплён на upstream-коммите через submodule. Изменения DS5Emu применяются из patches/vds/0001-dsemu-bootstrap.patch. Экспериментальное уменьшение аудиобуфера в этот патч не входит.
+Движок закреплён на upstream-коммите через submodule. Изменения DS5Link применяются из patches/vds/0001-ds5link-bootstrap.patch. Экспериментальное уменьшение аудиобуфера в этот патч не входит.
 
-Native-сборка: artifacts/native-Release. Интерфейс: src/DSEmu.App/bin/Release. Сборка и тесты не устанавливают службу или драйверы.
+Native-сборка: artifacts/native-Release. Интерфейс: src/DS5Link.App/bin/Release. Сборка и тесты не устанавливают службу или драйверы.
 
 ## Установочный комплект
 
@@ -35,14 +35,14 @@ scripts/test.ps1 запускает CTest и managed-сценарии прото
 
 ## Кандидат после ревью
 
-Версия задаётся в VERSION. scripts/test.ps1 включает 9 native-групп, 29 managed-сценариев и 39 UI layout/state-сценариев с синтетическими областями просмотра. Повышенный scripts/qa-install-path.ps1 использует отдельную службу, pipe, реестр и защищённую папку с пробелами/кириллицей/скобками; TestDrive задаёт локальный диск. Настоящие драйверы fixture не устанавливает. scripts/qa-cleanup-fixtures.ps1 удаляет его проверенные собственные каталоги, сохраняя отчёты.
+Версия задаётся в VERSION. scripts/test.ps1 включает 13 native-групп, 54 managed-сценария и 48 UI layout/state-сценариев с синтетическими областями просмотра. Повышенный scripts/qa-install-path.ps1 использует отдельную службу, pipe, реестр и защищённую папку с пробелами/кириллицей/скобками; TestDrive задаёт локальный диск. Настоящие драйверы fixture не устанавливает. scripts/qa-cleanup-fixtures.ps1 удаляет его проверенные собственные каталоги, сохраняя отчёты.
 
 Для тестового EXE с изменённым native: scripts/build-setup.ps1 -CandidateNativeDirectory <artifacts/native-Release>. Метаданные сохраняют candidate=true и hardwareAccepted=false; это не снимает защиту принятого native-хеша в обычном профиле. qa-setup проверяет выбранный режим и хеши. Принятие нового native и публикация требуют отдельного решения после аппаратной проверки.
 
 Для Xbox используется исходный ViGEmClient из third_party/ViGEmClient (ревизия и лицензия указаны рядом). scripts/test-dependencies.ps1 проверяет обнаружение драйверов на подставном инвентаре; qa-setup.ps1 дополнительно запускает настоящий отчёт Dependencies.ps1 через Windows PowerShell 5.1.
 
-Пример сборки кандидата 0.1.6 с сохранённым базовым пакетом: `scripts/build-setup.ps1 -PackageDirectory artifacts/packages/DSEmu-0.1.0-20261101-064430 -CandidateNativeDirectory artifacts/native-Release`. Пакеты драйверов берутся из последнего комплекта, созданного package.ps1; исходные скрипты мастера — из installer.
+Пример сборки кандидата 0.1.6 с сохранённым базовым пакетом: `scripts/build-setup.ps1 -PackageDirectory artifacts/packages/DS5Link-0.1.0-20261101-064430 -CandidateNativeDirectory artifacts/native-Release`. Пакеты драйверов берутся из последнего комплекта, созданного package.ps1; исходные скрипты мастера — из installer.
 
 Оформление EXE-мастера находится в installer/SetupStyle.cs; bootstrap компилируется вместе с installer/Setup.cs. Опубликованные сборки с новым движком сохраняют candidate=true и hardwareAccepted=false до завершения физической приёмки.
 
-Неразрушающий сбор с намеренно отсутствующим IPC endpoint: `dotnet run --project tests/DSEmu.Tests -c Release -- --diagnostic-smoke <новый каталог>`. Служба и драйверы не изменяются; отчёт сохраняется в заданном каталоге.
+Неразрушающий сбор с намеренно отсутствующим IPC endpoint: `dotnet run --project tests/DS5Link.Tests -c Release -- --diagnostic-smoke <новый каталог>`. Служба и драйверы не изменяются; отчёт сохраняется в заданном каталоге.

@@ -1,0 +1,114 @@
+﻿<Window x:Class="DS5Link.InputSettingsWindow" x:ClassModifier="internal"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:DS5Link"
+ Title="DS5Link · Настройки контроллера" Icon="Assets/DS5Link.ico" Width="960" Height="840" MinWidth="860" MinHeight="690"
+ WindowStartupLocation="CenterOwner" WindowStyle="None" AllowsTransparency="True" ResizeMode="CanResize" Background="Transparent" Foreground="#F0F1F3" FontFamily="Segoe UI, Inter, -apple-system, BlinkMacSystemFont, sans-serif" FontSize="13">
+ <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="AppTheme.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Window.Resources>
+ <Grid Margin="16">
+ <Border x:Name="WindowFrame" Style="{StaticResource SharedWindowFrame}">
+ <Border Style="{StaticResource SharedWindowHighlight}">
+ <Grid>
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <Grid x:Name="DragHeader" Background="Transparent" Margin="2,0,2,14" Height="24">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <StackPanel Grid.Column="1" Orientation="Horizontal">
+    <Button x:Name="MinimizeBtn" Style="{StaticResource WindowsMinimizeButton}" Click="MinimizeWindow" ToolTip="Свернуть"/>
+    <Button x:Name="CloseBtn" Style="{StaticResource WindowsCloseButton}" Click="CloseWindow" ToolTip="Закрыть настройки" Margin="2,0,0,0"/>
+   </StackPanel>
+  </Grid>
+  <StackPanel Grid.Row="1" Margin="2,0,2,16"><TextBlock Text="Настройки контроллера" FontSize="20" FontWeight="SemiBold"/></StackPanel>
+  <TabControl x:Name="SettingsTabs" Grid.Row="2" Style="{StaticResource SettingsTabs}">
+   <TabItem Header="Тачпад и стики" Style="{StaticResource SettingsTab}">
+  <ScrollViewer x:Name="SettingsScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,5,0">
+   <ScrollViewer.Template><ControlTemplate TargetType="ScrollViewer">
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/></Grid.ColumnDefinitions>
+     <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" CanContentScroll="{TemplateBinding CanContentScroll}"/>
+     <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1" Style="{StaticResource ShellScrollBar}" Orientation="Vertical" Minimum="0" Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}" Value="{Binding VerticalOffset, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+    </Grid>
+   </ControlTemplate></ScrollViewer.Template>
+   <Grid x:Name="DraftPanel"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <StackPanel>
+     <Border Style="{StaticResource SharedCard}"><StackPanel>
+      <TextBlock Text="Тачпад" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="Выберите зону или жест для назначения" Foreground="#99FFFFFF" FontSize="11" Margin="0,5,0,12"/>
+      <local:TouchpadView x:Name="TouchVisual" Height="150" Margin="0,0,0,12"/>
+      <UniformGrid x:Name="GestureButtons" Columns="3"/>
+      <TextBlock Text="Точки показывают касания, подсветка — физическое нажатие." TextWrapping="Wrap" FontSize="11" Foreground="#88FFFFFF" Margin="0,12,0,0"/>
+     </StackPanel></Border>
+     <Border Style="{StaticResource SharedCard}" Margin="0,10,0,0"><StackPanel>
+      <TextBlock Text="Стики" FontSize="16" FontWeight="SemiBold"/>
+      <Grid Margin="0,10,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+       <StackPanel><TextBlock Text="Левый" HorizontalAlignment="Center" Foreground="#BBFFFFFF"/><local:StickView x:Name="LeftVisual" Height="144"/></StackPanel>
+       <StackPanel Grid.Column="1"><TextBlock Text="Правый" HorizontalAlignment="Center" Foreground="#BBFFFFFF"/><local:StickView x:Name="RightVisual" Height="144"/></StackPanel>
+      </Grid>
+      <TextBlock Text="○ Исходный ввод     ● После мёртвой зоны" FontSize="11" Foreground="#BBFFFFFF" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+      <TextBlock Text="Синий круг — выбранная мёртвая зона. Предпросмотр учитывает изменения до сохранения." TextWrapping="Wrap" FontSize="11" Foreground="#88FFFFFF" Margin="0,10,0,0"/>
+     </StackPanel></Border>
+    </StackPanel>
+    <StackPanel Grid.Column="2">
+     <Border Style="{StaticResource SharedCard}"><StackPanel>
+      <Grid Margin="0,0,0,10"><TextBlock Text="Тачпад → клавиши" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/><CheckBox x:Name="TouchBindingsEnabled" Style="{DynamicResource IOSBlueSwitch}" HorizontalAlignment="Right"/></Grid>
+      <CheckBox x:Name="ConsumeTouchpad" Content="Не передавать тачпад игре" Foreground="#BBFFFFFF" FontSize="12" Margin="0,0,0,12"/>
+      <StackPanel x:Name="TouchMappings"/>
+      <TextBlock x:Name="CaptureHint" Text="Нажмите назначение, затем клавишу. Можно с Ctrl, Alt или Shift. Backspace — убрать." TextWrapping="Wrap" Foreground="#99FFFFFF" FontSize="11" Margin="0,8,0,0"/>
+     </StackPanel></Border>
+     <Border Style="{StaticResource SharedCard}" Margin="0,10,0,0"><StackPanel>
+      <TextBlock Text="Мёртвые зоны" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,14"/>
+      <Grid><TextBlock Text="Левый стик" Foreground="#BBFFFFFF"/><TextBlock x:Name="LeftDeadzoneValue" HorizontalAlignment="Right"/></Grid>
+      <Slider x:Name="LeftDeadzone" Style="{DynamicResource InputSlider}" Minimum="0" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="DeadzoneChanged" Margin="0,6,0,12"/>
+      <Grid><TextBlock Text="Правый стик" Foreground="#BBFFFFFF"/><TextBlock x:Name="RightDeadzoneValue" HorizontalAlignment="Right"/></Grid>
+      <Slider x:Name="RightDeadzone" Style="{DynamicResource InputSlider}" Minimum="0" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="DeadzoneChanged" Margin="0,6,0,10"/>
+      <TextBlock Text="0% — без обработки. Настройка игры может добавлять свою мёртвую зону." Foreground="#88FFFFFF" FontSize="11" TextWrapping="Wrap"/>
+     </StackPanel></Border>
+    </StackPanel>
+   </Grid>
+  </ScrollViewer>
+   </TabItem>
+   <TabItem x:Name="EffectsTab" Header="Курки, LED и звук" Style="{StaticResource SettingsTab}">
+    <ScrollViewer x:Name="EffectsScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ShellScrollBar}"/></ScrollViewer.Resources>
+   <ScrollViewer.Template><ControlTemplate TargetType="ScrollViewer">
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/></Grid.ColumnDefinitions>
+     <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" CanContentScroll="{TemplateBinding CanContentScroll}"/>
+     <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1" Style="{StaticResource ShellScrollBar}" Orientation="Vertical" Minimum="0" Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}" Value="{Binding VerticalOffset, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+    </Grid>
+   </ControlTemplate></ScrollViewer.Template>
+     <Grid Margin="0,0,7,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <Border Style="{StaticResource SharedCard}" Grid.RowSpan="2" Margin="0,0,0,10"><StackPanel>
+       <TextBlock Text="Адаптивные курки" FontSize="16" FontWeight="SemiBold"/>
+       <TextBlock Text="Пресет" FontSize="11" Foreground="#99FFFFFF" Margin="0,12,0,5"/><ComboBox x:Name="TriggerPreset" Style="{StaticResource DarkCombo}"/>
+       <StackPanel x:Name="TriggerEditors" Margin="0,14,0,0"/>
+       <TextBlock x:Name="TriggerOwnership" Text="Игра имеет приоритет для каждого курка отдельно." FontSize="11" Foreground="#99FFFFFF" TextWrapping="Wrap" Margin="0,12,0,0"/>
+      </StackPanel></Border>
+      <Border Style="{StaticResource SharedCard}" Grid.Column="2" Margin="0,0,0,10"><StackPanel>
+       <Grid><TextBlock Text="Подсветка" FontSize="16" FontWeight="SemiBold"/><Border x:Name="LedPreview" Width="54" Height="12" CornerRadius="6" Background="#0A84FF" HorizontalAlignment="Right" VerticalAlignment="Center"/></Grid>
+       <ComboBox x:Name="LedMode" Style="{StaticResource DarkCombo}" Margin="0,12,0,10"/>
+       <StackPanel x:Name="LedManualControls">
+        <UniformGrid x:Name="LedSwatches" Columns="7" Margin="0,0,0,8"/>
+        <StackPanel x:Name="RgbSliders"/>
+        <Grid Margin="0,6,0,0"><TextBlock Text="Яркость" FontSize="11" Foreground="#BBFFFFFF"/><TextBlock x:Name="BrightnessLabel" HorizontalAlignment="Right" FontSize="11"/></Grid>
+        <Slider x:Name="LedBrightness" Style="{StaticResource InputSlider}" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,3,0,6"/>
+        <Grid><TextBlock Text="Скорость анимации" FontSize="11" Foreground="#BBFFFFFF"/><TextBlock x:Name="SpeedLabel" HorizontalAlignment="Right" FontSize="11"/></Grid>
+        <Slider x:Name="LedSpeed" Style="{StaticResource InputSlider}" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,3,0,0"/>
+       </StackPanel>
+       <TextBlock x:Name="LedOwnership" Text="Цвет игры всегда имеет приоритет." FontSize="11" Foreground="#99FFFFFF" TextWrapping="Wrap" Margin="0,8,0,0"/>
+      </StackPanel></Border>
+      <Border x:Name="AudioEffectsCard" Style="{StaticResource SharedCard}" Grid.Column="2" Grid.Row="1" Margin="0,0,0,10"><StackPanel>
+       <Grid><TextBlock Text="Звук → haptics" FontSize="16" FontWeight="SemiBold"/><CheckBox x:Name="AudioEffectsEnabled" HorizontalAlignment="Right" Style="{StaticResource IOSBlueSwitch}"/></Grid>
+       <TextBlock Text="Звуковая волна передаётся в haptics, сохраняя импульсы и стереоканалы. Захватывается выбранный выход Windows, без микрофона." FontSize="11" Foreground="#99FFFFFF" TextWrapping="Wrap" Margin="0,8,0,10"/>
+       <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="38"/></Grid.ColumnDefinitions><ComboBox x:Name="AudioDevice" Style="{StaticResource DarkCombo}"/><Button Grid.Column="1" Content="↻" ToolTip="Обновить устройства вывода" Style="{StaticResource CompactButton}" Click="RefreshAudioDevices" Margin="5,0,0,0" Padding="4"/></Grid>
+       <StackPanel x:Name="AudioSliders" Margin="0,10,0,0"/>
+       <CheckBox x:Name="AudioBassOnly" Content="Только низкие частоты" Foreground="#BBFFFFFF" FontSize="12" Margin="0,8,0,8"/>
+       <ProgressBar x:Name="AudioMeter" Height="5" Minimum="0" Maximum="100" Background="#38383B" Foreground="#409CFF" BorderThickness="0"/>
+       <TextBlock x:Name="AudioStatus" Text="Захват звука выключен" FontSize="11" Foreground="#99FFFFFF" TextWrapping="Wrap" Margin="0,7,0,0"/>
+      </StackPanel></Border>
+      <Border Grid.Row="2" Grid.ColumnSpan="3" Background="#0AFFFFFF" CornerRadius="12" Padding="12"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="160"/></Grid.ColumnDefinitions><TextBlock Text="Канал, которым управляла игра, остаётся за ней до переподключения эмуляции. Ручные эффекты отключатся при потере связи с интерфейсом." FontSize="11" Foreground="#99FFFFFF" TextWrapping="Wrap" Margin="0,0,10,0"/><Button Grid.Column="1" Content="Сбросить эффекты" Style="{StaticResource CompactButton}" Click="ResetEffects" VerticalAlignment="Center"/></Grid></Border>
+     </Grid>
+    </ScrollViewer>
+   </TabItem>
+  </TabControl>
+  <StackPanel Grid.Row="3">
+   <TextBlock x:Name="InputSettingsNotice" Visibility="Collapsed" FontSize="11" Foreground="#FFB3A7" TextWrapping="Wrap" Margin="0,12,0,0"/>
+  </StackPanel>
+ </Grid>
+ </Border>
+ </Border>
+ </Grid>
+</Window>

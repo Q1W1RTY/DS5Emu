@@ -1,9 +1,9 @@
 ﻿$ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '..\installer\Dependencies.ps1')
 # Dot-sourced script parameters must not constrain the installer's destination variable.
-$installName='DSEmu'
-$installName='DS5Emu'
-if($installName -ne 'DS5Emu'){throw 'Dependency helper polluted installation variables'}
+$installName='DS5Link'
+$installName='DS5Link'
+if($installName -ne 'DS5Link'){throw 'Dependency helper polluted installation variables'}
 $script:drivers=@{};$script:versions=@{};$script:utilityPresent=$false
 function Get-CimInstance {param($ClassName,$Filter);$name=($Filter -split "'")[1];$script:drivers[$name]}
 function Test-Path {param($LiteralPath);if($LiteralPath -like '*.sys'){return $script:versions.ContainsKey($LiteralPath)};return $script:utilityPresent}

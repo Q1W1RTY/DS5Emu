@@ -1,6 +1,6 @@
 # Восстановление HidHide
 
-Журнал: `<db-path>.hidhide-recovery.json`. В установленной версии он находится в защищённом ProgramData/DSEmu. Содержит schema, путь текущего daemon, instance целевого HID и признаки наших изменений: appAdded, hideAdded, cloakEnabled.
+Журнал: `<db-path>.hidhide-recovery.json`. В установленной версии он находится в защищённом ProgramData/DS5Link. Содержит schema, путь текущего daemon, instance целевого HID и признаки наших изменений: appAdded, hideAdded, cloakEnabled.
 
 До первого изменения записывается временный файл, выполняется FlushFileBuffers, затем атомарное переименование с write-through. Только после успешной записи добавляется allowlist приложения, скрытие устройства и при необходимости глобальный cloak.
 
