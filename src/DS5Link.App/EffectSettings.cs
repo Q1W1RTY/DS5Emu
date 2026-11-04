@@ -55,7 +55,7 @@ internal sealed partial class InputSettingsWindow {
   LedMode.SelectionChanged+=(_,_)=>UpdateLedPreview();LedBrightness.ValueChanged+=(_,_)=>UpdateLedPreview();LedSpeed.ValueChanged+=(_,_)=>UpdateLedPreview();
   var devices=new[]{new AudioOutputDevice("","Устройство вывода Windows")};AudioDevice.ItemsSource=devices;AudioDevice.SelectedIndex=0;
   LoadEffectDraft(options);
-  Loaded+=(_,_)=>{if(!preview)LoadAudioDevices(options.AudioDeviceId);};
+  Loaded+=(_,_)=>{if(!preview)LoadAudioDevices(readProfiles==null?options.AudioDeviceId:editingProfile.Effects.AudioDeviceId);};
  }
  void LoadEffectDraft(EffectOptions options){
   leftTrigger.Set(options.Left);rightTrigger.Set(options.Right);TriggerPreset.SelectedIndex=0;
@@ -93,6 +93,6 @@ internal sealed partial class InputSettingsWindow {
   var next=new EffectOptions {Left=leftTrigger.Value,Right=rightTrigger.Value,LedMode=(LedMode.SelectedItem as EffectChoice)?.Key??"game",Red=redSlider.Value,Green=greenSlider.Value,Blue=blueSlider.Value,Brightness=(int)LedBrightness.Value,Speed=(int)LedSpeed.Value,AudioEnabled=AudioEffectsEnabled.IsChecked==true,BassOnly=AudioBassOnly.IsChecked==true,Sensitivity=sensitivitySlider.Value,Limit=limitSlider.Value,Gate=gateSlider.Value,AudioDeviceId=(AudioDevice.SelectedItem as AudioOutputDevice)?.Id??""};
   if(!next.Valid)throw new InvalidOperationException("Проверьте диапазоны курков и эффектов.");
   if(applyEffects==null)throw new InvalidOperationException("Предпросмотр не изменяет настройки контроллера.");
-  await applyEffects(next);
+  if(saveProfile!=null)await SaveProfileEffects(next);else await applyEffects(next);
  }
 }

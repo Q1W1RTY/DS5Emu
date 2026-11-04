@@ -1,4 +1,4 @@
-param()
+﻿param()
 $ErrorActionPreference='Stop'
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'installer\OwnedFiles.ps1')
 $base=Join-Path ([IO.Path]::GetTempPath()) ('DS5Link-owned-'+[guid]::NewGuid().ToString('N'))
@@ -29,3 +29,15 @@ $folder=Fixture 'junction';New-Item -ItemType Junction -Path (Join-Path $folder 
 $record=Get-Content (Join-Path $folder 'installed-files.json') -Raw|ConvertFrom-Json;$record.files+=@{path='linked\victim.txt';sha256=(Get-FileHash (Join-Path $outside 'victim.txt')).Hash};$record|ConvertTo-Json -Depth 6|Set-Content (Join-Path $folder 'installed-files.json') -Encoding utf8
 $rejected=$false;try{$null=Get-AppOwnedRemovalPlan $folder}catch{$rejected=$true};Check $rejected 'Junction accepted';Check ((Get-Content (Join-Path $outside 'victim.txt') -Raw).Trim() -eq 'outside untouched') 'Junction target modified'
 Write-Output "$checks ownership-removal checks passed; fixtures retained at $base"
+
+$ledger=Join-Path $base 'backups.json';$installRoot=Join-Path $base 'DS5Link'
+$firstBackup=Fixture ('DS5Link.backup-'+[guid]::NewGuid().ToString('N'))
+Update-AppBackupRetention $installRoot $ledger $firstBackup
+$secondBackup=Fixture ('DS5Link.backup-'+[guid]::NewGuid().ToString('N'))
+Update-AppBackupRetention $installRoot $ledger $secondBackup
+Check (!(Test-Path -LiteralPath $firstBackup)) 'Old managed backup survived retention'
+Check (Test-Path -LiteralPath $secondBackup) 'Latest backup was removed'
+Set-Content (Join-Path $secondBackup 'foreign.txt') 'preserve'
+Update-AppBackupRetention $installRoot $ledger '' 0
+Check (Test-Path (Join-Path $secondBackup 'foreign.txt')) 'Backup cleanup removed foreign data'
+Write-Output 'Backup retention: newest retained, older owned files removed, foreign data preserved'

@@ -193,10 +193,15 @@ index 0000000..480b2de
 +
 +}
 diff --git a/src/platform/win32/vds_bt.cc b/src/platform/win32/vds_bt.cc
-index 3d90890..38b59cb 100644
+index 3d90890..a14633d 100644
 --- a/src/platform/win32/vds_bt.cc
 +++ b/src/platform/win32/vds_bt.cc
-@@ -27,6 +27,9 @@
+@@ -1,3 +1,4 @@
++#include "io_deadline.hh"
+ // SPDX-License-Identifier: MIT
+ // Copyright (C) 2026 Jihong Min <hurryman2212@gmail.com>
+ // Copyright (C) 2026 Antonio <bleader93@gmail.com>
+@@ -27,6 +28,9 @@
  #include <windows.h>
  
  #include <bluetoothapis.h>
@@ -206,7 +211,28 @@ index 3d90890..38b59cb 100644
  #include <cfgmgr32.h>
  #include <hidsdi.h>
  #include <setupapi.h>
-@@ -682,7 +685,7 @@ private:
+@@ -532,18 +536,8 @@ private:
+       }
+     }
+ 
+-    HANDLE wait_handles[2] = {event.get(), stop_event_.get()};
+-    const DWORD wait_result =
+-        WaitForMultipleObjects(2, wait_handles, FALSE, INFINITE);
+-    if (wait_result == WAIT_OBJECT_0 + 1) {
+-      CancelIoEx(handle, &overlapped);
+-      (void)GetOverlappedResult(handle, &overlapped, &bytes_returned, TRUE);
+-      throw std::runtime_error(std::string(label) + " stopped");
+-    }
+-    if (wait_result != WAIT_OBJECT_0) {
+-      throw std::runtime_error(std::string(label) + " wait failed: " +
+-                               win32_error_message(GetLastError()));
+-    }
++    const DWORD wait_result=ds5link::wait_io(handle,overlapped,stop_event_.get(),1000,bytes_returned);
++    if(wait_result!=WAIT_OBJECT_0)throw std::runtime_error(std::string(label)+(wait_result==WAIT_TIMEOUT?" timed out":" stopped or wait failed"));
+     if (!GetOverlappedResult(handle, &overlapped, &bytes_returned, FALSE)) {
+       throw std::runtime_error(std::string(label) + " completion failed: " +
+                                win32_error_message(GetLastError()));
+@@ -682,7 +676,7 @@ private:
    bool enqueue_output_report(std::span<const std::uint8_t> report) {
      QueuedOutputWrite write = make_output_write(report);
      const bool is_audio_report =
@@ -215,7 +241,7 @@ index 3d90890..38b59cb 100644
  
      {
        std::lock_guard guard(output_mutex_);
-@@ -691,7 +694,7 @@ private:
+@@ -691,7 +685,7 @@ private:
        }
        const auto is_queued_audio = [](const QueuedOutputWrite &queued_write) {
          return !queued_write.buffer.empty() &&
@@ -224,7 +250,20 @@ index 3d90890..38b59cb 100644
        };
        const auto coalesce_oldest_audio = [&] {
          const auto oldest = std::find_if(output_queue_.begin(),
-@@ -1175,6 +1178,42 @@ find_hid_bluetooth_device(const std::string &address) {
+@@ -744,10 +738,10 @@ private:
+ 
+   void wait_for_output_idle() {
+     std::unique_lock lock(output_mutex_);
+-    output_cv_.wait(lock, [this] {
++    if(!output_cv_.wait_for(lock, std::chrono::seconds(2), [this] {
+       return output_stop_requested_ || !output_error_.empty() ||
+              (output_queue_.empty() && !output_write_active_);
+-    });
++    }))throw std::runtime_error("HID output queue timed out");
+     if (!output_error_.empty()) {
+       throw std::runtime_error(output_error_);
+     }
+@@ -1175,6 +1169,42 @@ find_hid_bluetooth_device(const std::string &address) {
    return std::move(*match);
  }
  
@@ -500,10 +539,10 @@ index 2acbd45..fd5766a 100644
  std::unique_ptr<DeviceGuard> hide_device(std::string instance_path,
 diff --git a/src/platform/win32/vds_identity.hh b/src/platform/win32/vds_identity.hh
 new file mode 100644
-index 0000000..c245fd9
+index 0000000..1a7190f
 --- /dev/null
 +++ b/src/platform/win32/vds_identity.hh
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,32 @@
 +// SPDX-License-Identifier: MIT
 +#pragma once
 +#include <cstdint>
@@ -520,15 +559,30 @@ index 0000000..c245fd9
 +  result[16]=3; // Dedicated string descriptor; no physical MAC/serial exposed.
 +  return result;
 +}
++// SDL and Steam read feature 0x09 instead of the USB string serial.
++// Never expose the backing Bluetooth address as the virtual USB identity.
++inline std::vector<std::uint8_t> virtual_pairing_identity(std::span<const std::uint8_t> source,unsigned port) {
++  std::vector<std::uint8_t> result(source.begin(),source.end());
++  if(result.empty() || result[0]!=0x09)return result;
++  if(result.size()<7 || port>65534)throw std::invalid_argument("Invalid virtual pairing identity");
++  const unsigned id=port+1;
++  // Pairing report carries the device address in little endian order.
++  const std::uint8_t address[]{static_cast<std::uint8_t>(id),static_cast<std::uint8_t>(id>>8),0x35,0x53,0x44,0x02};
++  for(unsigned i=0;i<6;++i)result[i+1]=address[i];
++  return result;
++}
 +inline std::string stable_virtual_serial(unsigned port) {
 +  return "DS5Link-DualSense-Port-"+std::to_string(port);
 +}
 +}
 diff --git a/src/platform/win32/vds_usbip.cc b/src/platform/win32/vds_usbip.cc
-index a50fe74..5bb0dde 100644
+index a50fe74..da21133 100644
 --- a/src/platform/win32/vds_usbip.cc
 +++ b/src/platform/win32/vds_usbip.cc
-@@ -3,6 +3,7 @@
+@@ -1,8 +1,10 @@
++#include "paced_reply_budget.hh"
+ // SPDX-License-Identifier: MIT
+ // Copyright (C) 2026 Jihong Min <hurryman2212@gmail.com>
  // Copyright (C) 2026 Antonio <bleader93@gmail.com>
  
  #include "vds_usbip.hh"
@@ -536,7 +590,7 @@ index a50fe74..5bb0dde 100644
  
  #include <algorithm>
  #include <array>
-@@ -42,6 +43,7 @@
+@@ -42,6 +44,7 @@
  #include "vds_io.hh"
  #include "vds_log.hh"
  #include "vds_win32.hh"
@@ -544,7 +598,7 @@ index a50fe74..5bb0dde 100644
  
  namespace vds::win::usbip {
  
-@@ -216,19 +218,9 @@ private:
+@@ -216,19 +219,9 @@ private:
    SOCKET s_;
  };
  
@@ -567,17 +621,29 @@ index a50fe74..5bb0dde 100644
  
  bool send_exact(SOCKET s, const void *buffer, std::size_t size) {
    const auto *data = static_cast<const char *>(buffer);
-@@ -851,6 +843,9 @@ private:
+@@ -666,8 +659,11 @@ struct VirtualPort::Impl : public std::enable_shared_from_this<Impl> {
+ 
+   struct PacedReply {
+     SOCKET client;
++    std::uint64_t generation=0;
+     std::vector<std::uint8_t> bytes;
+   };
++  std::atomic_uint64_t session_generation{0};
++  std::atomic_size_t sending_bytes{0};
+   std::thread iso_pacer_thread;
+   std::mutex pacer_mutex;
+   std::condition_variable pacer_cv;
+@@ -851,6 +847,9 @@ private:
      try {
        std::thread([port, client = std::move(client)]() mutable {
          try {
-+          DWORD no_timeout=0;
++          DWORD no_timeout=0,send_timeout=1000;
 +          setsockopt(client.get(),SOL_SOCKET,SO_RCVTIMEO,reinterpret_cast<const char*>(&no_timeout),sizeof(no_timeout));
-+          setsockopt(client.get(),SOL_SOCKET,SO_SNDTIMEO,reinterpret_cast<const char*>(&no_timeout),sizeof(no_timeout));
++          setsockopt(client.get(),SOL_SOCKET,SO_SNDTIMEO,reinterpret_cast<const char*>(&send_timeout),sizeof(send_timeout));
            port->handle_import_session(client.get());
          } catch (const std::exception &error) {
            try {
-@@ -921,7 +916,16 @@ private:
+@@ -921,7 +920,16 @@ private:
        if (stop_requested.load()) {
          return;
        }
@@ -594,7 +660,32 @@ index a50fe74..5bb0dde 100644
      }
    }
  
-@@ -1412,9 +1416,11 @@ bool VirtualPort::Impl::handle_cmd_submit(
+@@ -1031,13 +1039,15 @@ void VirtualPort::Impl::iso_pacer_loop() {
+     }
+     PacedReply reply = std::move(it->second);
+     paced_replies.erase(it);
++    sending_bytes=reply.bytes.size();
+     lk.unlock();
+     {
+       std::lock_guard<std::mutex> send_guard(socket_send_mutex);
+       // Failure just means the client went away; the session loop notices
+       // on its own recv path, nothing to do here.
+-      send_exact(reply.client, reply.bytes.data(), reply.bytes.size());
++      if(reply.generation==session_generation.load() && !send_exact(reply.client, reply.bytes.data(), reply.bytes.size()))shutdown(reply.client,SD_BOTH);
+     }
++    sending_bytes=0;
+     lk.lock();
+   }
+   if (high_res) {
+@@ -1093,6 +1103,7 @@ void VirtualPort::Impl::handle_import_session(SOCKET client) {
+   attached = true;
+   auto cleanup_connection = [this]() noexcept {
+     attached = false;
++    {std::lock_guard<std::mutex> send_guard(socket_send_mutex);++session_generation;}
+     try {
+       std::lock_guard<std::mutex> guard(pacer_mutex);
+       paced_replies.clear();
+@@ -1412,9 +1423,11 @@ bool VirtualPort::Impl::handle_cmd_submit(
        const std::uint8_t desc_index = static_cast<std::uint8_t>(wValue & 0xff);
        const std::uint8_t *src = nullptr;
        std::size_t len = 0;
@@ -608,7 +699,7 @@ index a50fe74..5bb0dde 100644
        } else if (desc_type == 0x02) { // CONFIGURATION
          src = desc.config;
          len = desc.config_len;
-@@ -1426,8 +1432,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
+@@ -1426,8 +1439,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
          len = desc.hid_report_len;
        } else if (desc_type == 0x03) { // STRING
          // Index 0 is the language-ID list; index 1 is iManufacturer,
@@ -618,7 +709,7 @@ index a50fe74..5bb0dde 100644
          std::vector<std::uint8_t> built;
          if (desc_index == 0) {
            built = build_langid_descriptor();
-@@ -1437,6 +1442,8 @@ bool VirtualPort::Impl::handle_cmd_submit(
+@@ -1437,6 +1449,8 @@ bool VirtualPort::Impl::handle_cmd_submit(
            built = build_string_descriptor(profile == VDS_PROFILE_DSE
                                                ? VDS_DSE_USB_PRODUCT_STRING
                                                : VDS_DS5_USB_PRODUCT_STRING);
@@ -627,6 +718,46 @@ index a50fe74..5bb0dde 100644
          }
          if (!built.empty()) {
            const std::size_t copy_len =
+@@ -1491,7 +1505,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
+       Frame reply;
+       wait_for_feature_reply(reply, 500);
+       if (reply.header.type == VDS_FRAME_USB_FEATURE_REPLY) {
+-        reply_data = reply.payload;
++        reply_data = virtual_pairing_identity(reply.payload,port_index);
+         // Never return more than the host asked for. A control-IN reply whose
+         // actual_length exceeds the requested wLength is a wire violation that
+         // makes usbip-win2 reset the whole TCP connection (dropping every
+@@ -1706,6 +1720,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
+   if (pace_out || pace_in) {
+     PacedReply paced{};
+     paced.client = client;
++    paced.generation=session_generation.load();
+     const std::size_t data_len = pace_in ? reply_data.size() : 0;
+     const std::size_t iso_len =
+         reply_iso.size() * sizeof(UsbipIsoPacketDescriptor);
+@@ -1727,6 +1742,9 @@ bool VirtualPort::Impl::handle_cmd_submit(
+           anchor < now - std::chrono::milliseconds(250)) {
+         anchor = now; // stream (re)start: first URB completes now
+       }
++      std::size_t queued_bytes=sending_bytes.load();
++      for(const auto& queued:paced_replies)queued_bytes+=queued.second.bytes.size();
++      if(!ds5link::reply_budget_available(paced_replies.size(),queued_bytes,paced.bytes.size(),anchor-now))throw std::runtime_error("USB/IP paced reply budget exceeded");
+       const auto due = anchor;
+       anchor += std::chrono::milliseconds(cmd.number_of_packets);
+       paced_replies.emplace(due, std::move(paced));
+diff --git a/src/platform/win32/vds_win32.cc b/src/platform/win32/vds_win32.cc
+index 78a2f2c..a1b697e 100644
+--- a/src/platform/win32/vds_win32.cc
++++ b/src/platform/win32/vds_win32.cc
+@@ -21,7 +21,7 @@ std::string win32_error_message(DWORD error) {
+   while (!text.empty() && (text.back() == '\r' || text.back() == '\n')) {
+     text.pop_back();
+   }
+-  return text;
++  return "Win32 error "+std::to_string(error)+": "+text;
+ }
+ 
+ } // namespace vds::win
 diff --git a/src/platform/win32/vdsctl.cc b/src/platform/win32/vdsctl.cc
 index a951df6..91241d5 100644
 --- a/src/platform/win32/vdsctl.cc
@@ -641,7 +772,7 @@ index a951df6..91241d5 100644
  using vds::win::win32_error_message;
  
 diff --git a/src/platform/win32/vdsd.cc b/src/platform/win32/vdsd.cc
-index 34839ba..f712206 100644
+index 34839ba..33e092f 100644
 --- a/src/platform/win32/vdsd.cc
 +++ b/src/platform/win32/vdsd.cc
 @@ -1,3 +1,4 @@
@@ -761,7 +892,15 @@ index 34839ba..f712206 100644
    vds::PcmAudioExtractor extractor{kWindowsPcmWindowFrames};
    vds::PcmAudioExtractor waveout_extractor{kWindowsPcmWindowFrames};
    vds::MicAudioDecoder mic_decoder;
-@@ -428,6 +484,10 @@ Options parse_platform_args(int argc, char **argv) {
+@@ -329,6 +385,7 @@ struct BridgeState {
+   Clock::time_point audio_last_summary_time{};
+   vds::DsState last_sent_state{};
+   vds::UsbInputReport last_logged_input_report{};
++  std::uint64_t usb_output_diagnostic_count = 0;
+   std::uint64_t usb_input_forward_count = 0;
+   std::uint64_t usb_input_change_log_count = 0;
+   std::uint64_t mic_input_forward_count = 0;
+@@ -428,6 +485,10 @@ Options parse_platform_args(int argc, char **argv) {
        }
      } else if (arg == "--pipe") {
        options.pipe = next_value(i, arg);
@@ -772,7 +911,7 @@ index 34839ba..f712206 100644
      } else {
        throw std::runtime_error("unknown option: " + std::string(arg));
      }
-@@ -707,26 +767,30 @@ bool try_send_bt_output_report(BluetoothTransport &bluetooth,
+@@ -707,26 +768,30 @@ bool try_send_bt_output_report(BluetoothTransport &bluetooth,
    return sent;
  }
  
@@ -820,15 +959,29 @@ index 34839ba..f712206 100644
    }
  }
  
-@@ -862,6 +926,7 @@ void handle_virtual_frame(HANDLE virtual_device, BluetoothTransport &bluetooth,
+@@ -858,10 +923,12 @@ void handle_virtual_frame(HANDLE virtual_device, BluetoothTransport &bluetooth,
+   }
+ 
+   if (frame.header.type == VDS_FRAME_USB_HID_OUT) {
+-    bool applied = false;
++    bool applied = false,capture_output=false;
      {
        std::lock_guard guard(state.mutex);
++      capture_output=state.usb_output_diagnostic_count++<32;
        applied = state.output_state.apply_usb_output_report(frame.payload);
 +      if(applied)state.effects.observe(frame.payload);
        if (applied && (state.audio_out_stream_active || state.waveout_active)) {
          state.output_state.set_audio_out_stream_active(
              true, state.waveout_active ? !state.waveout_speaker_selected
-@@ -1033,6 +1098,7 @@ void handle_virtual_frame(HANDLE virtual_device, BluetoothTransport &bluetooth,
+@@ -874,6 +941,7 @@ void handle_virtual_frame(HANDLE virtual_device, BluetoothTransport &bluetooth,
+     if (!frame.payload.empty()) {
+       message += " report_id=" + std::to_string(frame.payload[0]);
+     }
++    if(capture_output)message+=" payload="+hex_bytes(frame.payload,48,':',false);
+     logger.log(vds::LogScope::Usb, vds::LogLevel::Info, message);
+     if (applied) {
+       send_bt_state_if_changed(bluetooth, state, logger, bluetooth_mutex);
+@@ -1033,6 +1101,7 @@ void handle_virtual_frame(HANDLE virtual_device, BluetoothTransport &bluetooth,
    if (frame.header.type != VDS_FRAME_USB_AUDIO_OUT) {
      return;
    }
@@ -836,7 +989,7 @@ index 34839ba..f712206 100644
  
    const auto audio_start = Clock::now();
    const auto peaks = pcm_channel_peaks(frame.payload);
-@@ -1265,6 +1331,7 @@ void handle_bluetooth_frame(HANDLE virtual_device,
+@@ -1265,6 +1334,7 @@ void handle_bluetooth_frame(HANDLE virtual_device,
          return;
        }
        if (pcm) {
@@ -844,7 +997,7 @@ index 34839ba..f712206 100644
          for (std::size_t offset = 0; offset + 3 < pcm->size();
               offset += 2 * sizeof(std::int16_t)) {
            (*pcm)[offset + 0] = (*pcm)[offset + 2];
-@@ -1305,8 +1372,16 @@ void handle_bluetooth_frame(HANDLE virtual_device,
+@@ -1305,8 +1375,16 @@ void handle_bluetooth_frame(HANDLE virtual_device,
        return;
      }
  
@@ -862,7 +1015,7 @@ index 34839ba..f712206 100644
        vds::win::write_handle_frame(virtual_device, VDS_FRAME_USB_HID_IN,
                                     *report, "virtual",
                                     handle_io_cancellation());
-@@ -1357,6 +1432,7 @@ void handle_bluetooth_frame(HANDLE virtual_device,
+@@ -1357,6 +1435,7 @@ void handle_bluetooth_frame(HANDLE virtual_device,
          }
          state.mute_button_down = mute_button_down;
          mic_muted = state.mic_muted;
@@ -870,7 +1023,7 @@ index 34839ba..f712206 100644
          send_mic_state = mic_mute_changed ||
                           (headset_mic_changed && state.audio_in_stream_active);
          if (send_mic_state) {
-@@ -1531,7 +1607,6 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
+@@ -1531,7 +1610,6 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
    Clock::time_point scheduled_send_time{};
    Clock::time_point send_time{};
    vds::AudioChunk sent_audio_chunk{};
@@ -878,7 +1031,7 @@ index 34839ba..f712206 100644
    bool have_sent_audio_chunk = false;
    bool audio_route_deactivated = false;
  
-@@ -1563,7 +1638,7 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
+@@ -1563,7 +1641,7 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
          chunk.has_haptics_signal = false;
          has_signal = chunk.has_signal;
          packet = state.haptics_builder.build_packet(
@@ -887,7 +1040,7 @@ index 34839ba..f712206 100644
              state.waveout_active ? !state.waveout_speaker_selected
                                   : state.headset_plugged);
          sending_concealment = true;
-@@ -1622,12 +1697,7 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
+@@ -1622,12 +1700,7 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
            state.next_haptics_send_time = {};
            state.last_audio_chunk.reset();
  
@@ -901,7 +1054,7 @@ index 34839ba..f712206 100644
            audio_route_deactivated = true;
          }
          state.next_haptics_send_time = {};
-@@ -1661,7 +1731,7 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
+@@ -1661,7 +1734,7 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
          ++state.audio_stale_dropped_count;
          ++stale_dropped_now;
        }
@@ -910,7 +1063,7 @@ index 34839ba..f712206 100644
        has_signal = chunk.has_signal;
        has_haptics_signal = chunk.has_haptics_signal;
        vds::HapticsChunk haptics = chunk.haptics;
-@@ -1675,7 +1745,7 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
+@@ -1675,7 +1748,7 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
                                       ? !state.waveout_speaker_selected
                                       : state.headset_plugged;
        packet = state.haptics_builder.build_packet(haptics, chunk.speaker,
@@ -919,7 +1072,7 @@ index 34839ba..f712206 100644
                                                    true, route_headset);
        sent_audio_chunk = chunk;
        have_sent_audio_chunk = true;
-@@ -1688,27 +1758,26 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
+@@ -1688,27 +1761,26 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
    }
  
    if (audio_route_deactivated) {
@@ -956,7 +1109,7 @@ index 34839ba..f712206 100644
        if (sending_keepalive) {
          ++state.audio_keepalive_blocked_count;
        } else {
-@@ -1746,10 +1815,6 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
+@@ -1746,10 +1818,6 @@ Clock::duration flush_pending_audio_chunk(BluetoothTransport &bluetooth,
  
    {
      std::lock_guard guard(state.mutex);
@@ -967,7 +1120,7 @@ index 34839ba..f712206 100644
      pending_after_pop = state.pending_audio_chunks.size();
      if (pending_after_pop == 0) {
        state.audio_jitter_buffer_start = {};
-@@ -2034,6 +2099,113 @@ void bluetooth_to_virtual_loop(BluetoothTransport &bluetooth,
+@@ -2034,6 +2102,113 @@ void bluetooth_to_virtual_loop(BluetoothTransport &bluetooth,
    }
  }
  
@@ -1081,7 +1234,7 @@ index 34839ba..f712206 100644
  void run_bridge_session(const std::string &device_address,
                          const std::string &virtual_device,
                          const vds::ControllerConfig *selected_config,
-@@ -2064,6 +2236,7 @@ void run_bridge_session(const std::string &device_address,
+@@ -2064,6 +2239,7 @@ void run_bridge_session(const std::string &device_address,
        vds::win::usbip::open_virtual_port(profile, selected_config->ports[0],
                                           logger);
    BridgeState state;
@@ -1089,7 +1242,7 @@ index 34839ba..f712206 100644
    std::mutex bluetooth_mutex;
    UniqueHandle virtual_device_handle = open_device(virtual_port->pipe_path());
    std::atomic_bool bridge_restart_requested = false;
-@@ -2076,6 +2249,21 @@ void run_bridge_session(const std::string &device_address,
+@@ -2076,6 +2252,21 @@ void run_bridge_session(const std::string &device_address,
          std::this_thread::sleep_for(std::chrono::milliseconds(100));
        }
        if (g_stop_requested.load() || session_stop_requested->load()) {
@@ -1104,14 +1257,14 @@ index 34839ba..f712206 100644
 +          std::memcpy(usb.data()+1,&released,sizeof(released));
 +          vds::DsOutputState output;output.apply_usb_output_report(usb);
 +          const auto report=output.build_bt_state_report();
-+          std::lock_guard lock(bluetooth_mutex);
-+          bluetooth->try_write_interrupt_packet(hidp_output_packet(report));
++          std::unique_lock lock(bluetooth_mutex,std::try_to_lock);
++          if(lock.owns_lock())bluetooth->try_write_interrupt_packet(hidp_output_packet(report));
 +          Sleep(30);
 +        }catch(...){}
          request_bridge_restart(virtual_device_handle.get(), bluetooth.get(),
                                 bridge_restart_requested);
        }
-@@ -2103,6 +2291,30 @@ void run_bridge_session(const std::string &device_address,
+@@ -2103,6 +2294,30 @@ void run_bridge_session(const std::string &device_address,
               "Windows bridge started virtual=" + virtual_device +
                   " bluetooth=" + bluetooth->description());
  
@@ -1142,7 +1295,7 @@ index 34839ba..f712206 100644
    std::thread to_bluetooth([&] {
      try {
        virtual_to_bluetooth_loop(virtual_device_handle.get(), *bluetooth, state,
-@@ -2153,6 +2365,8 @@ void run_bridge_session(const std::string &device_address,
+@@ -2153,6 +2368,8 @@ void run_bridge_session(const std::string &device_address,
    to_virtual.join();
    audio_flush.join();
    bridge_restart_requested = true;
@@ -1151,128 +1304,223 @@ index 34839ba..f712206 100644
    if (stop_monitor.joinable()) {
      stop_monitor.join();
    }
-@@ -2168,11 +2382,12 @@ struct BridgeWorker {
+@@ -2168,297 +2385,10 @@ struct BridgeWorker {
    std::thread thread;
    std::atomic_bool stop_requested = false;
    std::atomic_bool done = false;
 +  Clock::time_point started=Clock::now(),stop_since{};
  };
  
- class ControlPipeServer {
- public:
+-class ControlPipeServer {
+-public:
 -  ControlPipeServer(std::string pipe_name, vds::Logger &logger)
-+  ControlPipeServer(std::string pipe_name, std::string owner_sid, vds::Logger &logger)
-       : logger_(logger), pipe_name_(std::move(pipe_name)),
-         stop_event_(CreateEventA(nullptr, TRUE, FALSE, nullptr)),
-         command_event_(CreateEventA(nullptr, TRUE, FALSE, nullptr)) {
-@@ -2180,6 +2395,23 @@ public:
-       throw std::runtime_error("failed to create control pipe event: " +
-                                win32_error_message(GetLastError()));
-     }
-+    if(owner_sid.empty()) {
-+      HANDLE raw_token=nullptr;
-+      if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&raw_token)) throw std::runtime_error("Cannot query control pipe owner");
-+      UniqueHandle token(raw_token);DWORD size=0;GetTokenInformation(token.get(),TokenUser,nullptr,0,&size);
-+      std::vector<unsigned char> buffer(size);
-+      if(!GetTokenInformation(token.get(),TokenUser,buffer.data(),size,&size)) throw std::runtime_error("Cannot read control pipe owner");
-+      LPSTR sid=nullptr;
-+      if(!ConvertSidToStringSidA(reinterpret_cast<TOKEN_USER*>(buffer.data())->User.Sid,&sid)) throw std::runtime_error("Cannot encode owner SID");
-+      owner_sid=sid;LocalFree(sid);
-+    }
-+    PSID sid=nullptr;
-+    if(!ConvertStringSidToSidA(owner_sid.c_str(),&sid))throw std::runtime_error("Invalid owner SID");
-+    LocalFree(sid);
-+    const auto sddl="D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;"+owner_sid+")";
-+    PSECURITY_DESCRIPTOR descriptor=nullptr;
-+    if(!ConvertStringSecurityDescriptorToSecurityDescriptorA(sddl.c_str(),SDDL_REVISION_1,&descriptor,nullptr))throw std::runtime_error("Cannot secure control pipe");
-+    security_.reset(descriptor);
-     thread_ = std::thread([this] { thread_main(); });
-   }
- 
-@@ -2189,6 +2421,8 @@ public:
-   ControlPipeServer &operator=(const ControlPipeServer &) = delete;
- 
-   HANDLE command_event() const { return command_event_.get(); }
-+  const std::atomic_uint64_t& busy_since() const {return busy_since_;}
-+  const std::atomic_uint64_t& unresponsive_since() const {return unresponsive_since_;}
- 
-   template <typename Handler> void service_ready(Handler &&handler) {
-     while (true) {
-@@ -2203,6 +2437,8 @@ public:
-         requests_.pop_front();
-       }
- 
-+      unresponsive_since_=0;
-+      if(request->cancelled)continue;
-       std::string reply;
-       if (request->command.empty()) {
-         reply = "{\"OK\":false,\"error\":\"empty command\"}\n";
-@@ -2234,6 +2470,7 @@ private:
-   struct ControlRequest {
-     std::string command;
-     std::string reply;
-+    std::atomic_bool cancelled=false;
-     UniqueHandle done_event;
-     std::mutex mutex;
-   };
-@@ -2267,15 +2504,17 @@ private:
-       if (stop_requested_) {
-         return "{\"OK\":false,\"error\":\"daemon stopping\"}\n";
-       }
-+      std::uint64_t empty=0;unresponsive_since_.compare_exchange_strong(empty,GetTickCount64());
-       requests_.push_back(request);
-       SetEvent(command_event_.get());
-     }
- 
-     HANDLE wait_handles[2] = {request->done_event.get(), stop_event_.get()};
-     const DWORD wait_result =
+-      : logger_(logger), pipe_name_(std::move(pipe_name)),
+-        stop_event_(CreateEventA(nullptr, TRUE, FALSE, nullptr)),
+-        command_event_(CreateEventA(nullptr, TRUE, FALSE, nullptr)) {
+-    if (!stop_event_ || !command_event_) {
+-      throw std::runtime_error("failed to create control pipe event: " +
+-                               win32_error_message(GetLastError()));
+-    }
+-    thread_ = std::thread([this] { thread_main(); });
+-  }
+-
+-  ~ControlPipeServer() { stop(); }
+-
+-  ControlPipeServer(const ControlPipeServer &) = delete;
+-  ControlPipeServer &operator=(const ControlPipeServer &) = delete;
+-
+-  HANDLE command_event() const { return command_event_.get(); }
+-
+-  template <typename Handler> void service_ready(Handler &&handler) {
+-    while (true) {
+-      std::shared_ptr<ControlRequest> request;
+-      {
+-        std::lock_guard lock(mutex_);
+-        if (requests_.empty()) {
+-          ResetEvent(command_event_.get());
+-          return;
+-        }
+-        request = requests_.front();
+-        requests_.pop_front();
+-      }
+-
+-      std::string reply;
+-      if (request->command.empty()) {
+-        reply = "{\"OK\":false,\"error\":\"empty command\"}\n";
+-      } else {
+-        reply = handler(trim_command(request->command));
+-      }
+-
+-      {
+-        std::lock_guard lock(request->mutex);
+-        request->reply = std::move(reply);
+-      }
+-      SetEvent(request->done_event.get());
+-    }
+-  }
+-
+-  void stop() {
+-    if (stop_requested_.exchange(true)) {
+-      return;
+-    }
+-    SetEvent(stop_event_.get());
+-    complete_queued_requests("{\"OK\":false,\"error\":\"daemon stopping\"}\n");
+-
+-    if (thread_.joinable()) {
+-      thread_.join();
+-    }
+-  }
+-
+-private:
+-  struct ControlRequest {
+-    std::string command;
+-    std::string reply;
+-    UniqueHandle done_event;
+-    std::mutex mutex;
+-  };
+-
+-  void complete_queued_requests(std::string reply) {
+-    std::deque<std::shared_ptr<ControlRequest>> requests;
+-    {
+-      std::lock_guard lock(mutex_);
+-      requests.swap(requests_);
+-      ResetEvent(command_event_.get());
+-    }
+-    for (const auto &request : requests) {
+-      {
+-        std::lock_guard lock(request->mutex);
+-        request->reply = reply;
+-      }
+-      SetEvent(request->done_event.get());
+-    }
+-  }
+-
+-  std::string queue_command(std::string command) {
+-    auto request = std::make_shared<ControlRequest>();
+-    request->command = std::move(command);
+-    request->done_event.reset(CreateEventA(nullptr, TRUE, FALSE, nullptr));
+-    if (!request->done_event) {
+-      return "{\"OK\":false,\"error\":\"failed to queue command\"}\n";
+-    }
+-
+-    {
+-      std::lock_guard lock(mutex_);
+-      if (stop_requested_) {
+-        return "{\"OK\":false,\"error\":\"daemon stopping\"}\n";
+-      }
+-      requests_.push_back(request);
+-      SetEvent(command_event_.get());
+-    }
+-
+-    HANDLE wait_handles[2] = {request->done_event.get(), stop_event_.get()};
+-    const DWORD wait_result =
 -        WaitForMultipleObjects(2, wait_handles, FALSE, INFINITE);
-+        WaitForMultipleObjects(2, wait_handles, FALSE, 4500);
-     if (wait_result != WAIT_OBJECT_0) {
+-    if (wait_result != WAIT_OBJECT_0) {
 -      return "{\"OK\":false,\"error\":\"daemon stopping\"}\n";
-+      request->cancelled=true;
-+      return "{\"OK\":false,\"error\":\"control request timed out\"}\n";
-     }
- 
-     std::lock_guard lock(request->mutex);
-@@ -2284,10 +2523,11 @@ private:
- 
-   void thread_main() {
-     while (!stop_requested_) {
-+      SECURITY_ATTRIBUTES attributes{sizeof(attributes),security_.get(),FALSE};
-       UniqueHandle pipe(CreateNamedPipeA(
+-    }
+-
+-    std::lock_guard lock(request->mutex);
+-    return request->reply;
+-  }
+-
+-  void thread_main() {
+-    while (!stop_requested_) {
+-      UniqueHandle pipe(CreateNamedPipeA(
 -          pipe_name_.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
 -          PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096,
 -          0, nullptr));
-+          pipe_name_.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
-+          PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 65536, 65536,
-+          0, &attributes));
-       if (!pipe) {
-         logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
-                     "failed to create control pipe " + pipe_name_ + ": " +
-@@ -2301,7 +2541,9 @@ private:
-         continue;
-       }
- 
-+      busy_since_=GetTickCount64();
-       handle_client(pipe.get());
-+      busy_since_=0;
-       DisconnectNamedPipe(pipe.get());
-     }
-   }
-@@ -2310,7 +2552,7 @@ private:
-                         DWORD &bytes_transferred, std::string_view label) {
-     HANDLE wait_handles[2] = {overlapped.hEvent, stop_event_.get()};
-     const DWORD wait_result =
+-      if (!pipe) {
+-        logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
+-                    "failed to create control pipe " + pipe_name_ + ": " +
+-                        win32_error_message(GetLastError()));
+-        WaitForSingleObject(stop_event_.get(), 1000);
+-        continue;
+-      }
+-
+-      if (!connect_client(pipe.get()) || stop_requested_) {
+-        DisconnectNamedPipe(pipe.get());
+-        continue;
+-      }
+-
+-      handle_client(pipe.get());
+-      DisconnectNamedPipe(pipe.get());
+-    }
+-  }
+-
+-  bool wait_for_pipe_io(HANDLE pipe, OVERLAPPED &overlapped,
+-                        DWORD &bytes_transferred, std::string_view label) {
+-    HANDLE wait_handles[2] = {overlapped.hEvent, stop_event_.get()};
+-    const DWORD wait_result =
 -        WaitForMultipleObjects(2, wait_handles, FALSE, INFINITE);
-+        WaitForMultipleObjects(2, wait_handles, FALSE, label=="control pipe connect"?INFINITE:5000);
-     if (wait_result == WAIT_OBJECT_0 + 1) {
-       CancelIoEx(pipe, &overlapped);
-       (void)GetOverlappedResult(pipe, &overlapped, &bytes_transferred, TRUE);
-@@ -2380,32 +2622,26 @@ private:
-       return std::nullopt;
-     }
- 
+-    if (wait_result == WAIT_OBJECT_0 + 1) {
+-      CancelIoEx(pipe, &overlapped);
+-      (void)GetOverlappedResult(pipe, &overlapped, &bytes_transferred, TRUE);
+-      return false;
+-    }
+-    if (wait_result != WAIT_OBJECT_0) {
+-      CancelIoEx(pipe, &overlapped);
+-      (void)GetOverlappedResult(pipe, &overlapped, &bytes_transferred, TRUE);
+-      if (!stop_requested_) {
+-        logger_.log(vds::LogScope::Control, vds::LogLevel::Warn,
+-                    std::string(label) +
+-                        " wait failed: " + win32_error_message(GetLastError()));
+-      }
+-      return false;
+-    }
+-    if (!GetOverlappedResult(pipe, &overlapped, &bytes_transferred, FALSE)) {
+-      const DWORD error = GetLastError();
+-      if (!stop_requested_ && error != ERROR_NO_DATA &&
+-          error != ERROR_BROKEN_PIPE) {
+-        logger_.log(vds::LogScope::Control, vds::LogLevel::Warn,
+-                    std::string(label) +
+-                        " completion failed: " + win32_error_message(error));
+-      }
+-      return false;
+-    }
+-    return true;
+-  }
+-
+-  bool connect_client(HANDLE pipe) {
+-    UniqueHandle event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
+-    if (!event) {
+-      logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
+-                  "failed to create control pipe connect event: " +
+-                      win32_error_message(GetLastError()));
+-      return false;
+-    }
+-
+-    OVERLAPPED overlapped{};
+-    overlapped.hEvent = event.get();
+-    if (ConnectNamedPipe(pipe, &overlapped)) {
+-      return true;
+-    }
+-
+-    const DWORD error = GetLastError();
+-    if (error == ERROR_PIPE_CONNECTED) {
+-      return true;
+-    }
+-    if (error != ERROR_IO_PENDING) {
+-      if (!stop_requested_) {
+-        logger_.log(vds::LogScope::Control, vds::LogLevel::Warn,
+-                    "control pipe connect failed: " +
+-                        win32_error_message(error));
+-      }
+-      return false;
+-    }
+-
+-    DWORD ignored = 0;
+-    return wait_for_pipe_io(pipe, overlapped, ignored, "control pipe connect");
+-  }
+-
+-  std::optional<std::string> read_command(HANDLE pipe) {
+-    UniqueHandle event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
+-    if (!event) {
+-      logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
+-                  "failed to create control pipe read event: " +
+-                      win32_error_message(GetLastError()));
+-      return std::nullopt;
+-    }
+-
 -    std::array<char, 512> buffer{};
 -    DWORD got = 0;
 -    OVERLAPPED overlapped{};
@@ -1297,70 +1545,73 @@ index 34839ba..f712206 100644
 -    }
 -    if (got == 0) {
 -      return std::nullopt;
-+    std::string line;
-+    const auto deadline=GetTickCount64()+5000;
-+    while(line.size()<65536 && GetTickCount64()<deadline) {
-+      std::array<char,4096> buffer{};DWORD got=0;
-+      OVERLAPPED overlapped{};overlapped.hEvent=event.get();ResetEvent(event.get());
-+      BOOL started=ReadFile(pipe,buffer.data(),static_cast<DWORD>(buffer.size()),&got,&overlapped);
-+      DWORD error=started?ERROR_SUCCESS:GetLastError();
-+      if(!started && error==ERROR_IO_PENDING) {
-+        HANDLE handles[]{event.get(),stop_event_.get()};
-+        const auto now=GetTickCount64();
-+        auto wait=WaitForMultipleObjects(2,handles,FALSE,now>=deadline?0:static_cast<DWORD>(deadline-now));
-+        if(wait!=WAIT_OBJECT_0) {CancelIoEx(pipe,&overlapped);GetOverlappedResult(pipe,&overlapped,&got,TRUE);return std::nullopt;}
-+        started=GetOverlappedResult(pipe,&overlapped,&got,FALSE);error=started?ERROR_SUCCESS:GetLastError();
-+      }
-+      if((!started && error!=ERROR_MORE_DATA) || !got)return std::nullopt;
-+      line.append(buffer.data(),got);
-+      if(line.size()>65536)return std::nullopt;
-+      if(line.find('\n')!=std::string::npos)return line;
-     }
+-    }
 -    return std::string(buffer.data(), static_cast<std::size_t>(got));
-+    return std::nullopt;
-   }
- 
-   bool write_reply(HANDLE pipe, const std::string &reply) {
-@@ -2447,15 +2683,31 @@ private:
-     }
- 
-     const std::string reply = queue_command(*command);
+-  }
+-
+-  bool write_reply(HANDLE pipe, const std::string &reply) {
+-    UniqueHandle event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
+-    if (!event) {
+-      logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
+-                  "failed to create control pipe write event: " +
+-                      win32_error_message(GetLastError()));
+-      return false;
+-    }
+-
+-    DWORD written = 0;
+-    OVERLAPPED overlapped{};
+-    overlapped.hEvent = event.get();
+-    const BOOL started =
+-        WriteFile(pipe, reply.data(), static_cast<DWORD>(reply.size()),
+-                  &written, &overlapped);
+-    if (!started) {
+-      const DWORD error = GetLastError();
+-      if (error != ERROR_IO_PENDING) {
+-        if (!stop_requested_) {
+-          logger_.log(vds::LogScope::Control, vds::LogLevel::Warn,
+-                      "control pipe reply failed: " +
+-                          win32_error_message(error));
+-        }
+-        return false;
+-      }
+-      if (!wait_for_pipe_io(pipe, overlapped, written, "control pipe reply")) {
+-        return false;
+-      }
+-    }
+-    return true;
+-  }
+-
+-  void handle_client(HANDLE pipe) {
+-    const auto command = read_command(pipe);
+-    if (!command) {
+-      return;
+-    }
+-
+-    const std::string reply = queue_command(*command);
 -    (void)write_reply(pipe, reply);
-+    if(write_reply(pipe, reply)) {
-+      // DisconnectNamedPipe discards unread output. Drain it with a bounded
-+      // synchronous flush so a slow client cannot hold the service forever.
-+      UniqueHandle finished(CreateEventA(nullptr,TRUE,FALSE,nullptr));
-+      HANDLE raw_thread=nullptr;
-+      if(finished && DuplicateHandle(GetCurrentProcess(),GetCurrentThread(),GetCurrentProcess(),&raw_thread,0,FALSE,DUPLICATE_SAME_ACCESS)) {
-+        UniqueHandle current_thread(raw_thread);
-+        std::thread watchdog([&] {
-+          HANDLE handles[]{finished.get(),stop_event_.get()};
-+          if(WaitForMultipleObjects(2,handles,FALSE,5000)!=WAIT_OBJECT_0)CancelSynchronousIo(current_thread.get());
-+        });
-+        FlushFileBuffers(pipe);SetEvent(finished.get());watchdog.join();
-+      }
-+    }
-   }
+-  }
+-
+-  vds::Logger &logger_;
+-  std::string pipe_name_;
+-  UniqueHandle stop_event_;
+-  UniqueHandle command_event_;
+-  std::thread thread_;
+-  std::atomic_bool stop_requested_ = false;
+-  std::mutex mutex_;
+-  std::deque<std::shared_ptr<ControlRequest>> requests_;
+-};
++#include "control_pipe_server.hh"
  
-   vds::Logger &logger_;
-   std::string pipe_name_;
-+  struct LocalDeleter {void operator()(void* value)const {if(value)LocalFree(value);}};
-+  std::unique_ptr<void,LocalDeleter> security_;
-   UniqueHandle stop_event_;
-   UniqueHandle command_event_;
-   std::thread thread_;
-   std::atomic_bool stop_requested_ = false;
-+  std::atomic_uint64_t busy_since_{0},unresponsive_since_{0};
-   std::mutex mutex_;
-   std::deque<std::shared_ptr<ControlRequest>> requests_;
- };
-@@ -2518,14 +2770,16 @@ void run_configured_bridge_worker(vds::ControllerConfig config,
+ bool worker_is_connected(const BridgeWorker &worker) {
+   return !worker.done.load() && !worker.stop_requested.load();
+@@ -2518,14 +2448,17 @@ void run_configured_bridge_worker(vds::ControllerConfig config,
                                    std::atomic_bool &stop_requested,
                                    std::atomic_bool &done,
                                    std::string &last_error,
 -                                  const std::atomic_uint32_t &trace_flags) {
 +                                  const std::atomic_uint32_t &trace_flags, bool xbox_mode) {
    try {
++    TimerResolutionGuard timer_resolution(kWindowsTimerResolutionMs);
      if (config.ports.size() != 1) {
        throw std::runtime_error("bridge worker requires one reserved port");
      }
@@ -1373,7 +1624,7 @@ index 34839ba..f712206 100644
                         &stop_requested, &trace_flags);
      if (!g_stop_requested && !stop_requested.load()) {
        last_error = "bridge session ended";
-@@ -2550,7 +2804,8 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2550,7 +2483,8 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
    std::vector<std::string> discovery_warned_states;
    std::vector<std::string> no_port_warned_addresses;
    std::vector<std::string> port_binding_warned_states;
@@ -1383,7 +1634,7 @@ index 34839ba..f712206 100644
    UniqueHandle retry_timer(CreateWaitableTimerExA(
        nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
        TIMER_MODIFY_STATE | SYNCHRONIZE));
-@@ -2565,8 +2820,22 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2565,8 +2499,22 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
    std::atomic_uint32_t trace_flags = 0;
    bool reload_requested = false;
    bool scan_requested = true;
@@ -1406,7 +1657,7 @@ index 34839ba..f712206 100644
    logger.log(vds::LogScope::Daemon, vds::LogLevel::Info,
               "Windows bridge supervisor started pipe=" + options.pipe);
  
-@@ -2596,6 +2865,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2596,6 +2544,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
    };
  
    while (!g_stop_requested) {
@@ -1414,7 +1665,7 @@ index 34839ba..f712206 100644
      bool worker_removed = false;
      for (auto worker = workers.begin(); worker != workers.end();) {
        if ((*worker)->done.load()) {
-@@ -2603,6 +2873,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2603,6 +2552,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
            (*worker)->thread.join();
          }
          if (!(*worker)->last_error.empty()) {
@@ -1422,13 +1673,13 @@ index 34839ba..f712206 100644
            vds::record_vdsd_worker_failure(
                worker_failure_backoffs, (*worker)->address,
                Clock::now() + kBridgeWorkerFailureRetryDelay);
-@@ -2610,13 +2881,41 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2610,13 +2560,41 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
          worker = workers.erase(worker);
          worker_removed = true;
        } else {
 +        if(!(*worker)->stop_requested && Clock::now()-(*worker)->started>std::chrono::seconds(15)){
 +          std::lock_guard lock(g_telemetry.mutex);
-+          if(g_telemetry.last_input==Clock::time_point{}){(*worker)->stop_requested=true;last_error="Контроллер не передаёт ввод. Переподключаем автоматически…";}
++          if(g_telemetry.last_input==Clock::time_point{} || Clock::now()-g_telemetry.last_input>std::chrono::seconds(5)){(*worker)->stop_requested=true;last_error="Контроллер не передаёт ввод. Переподключаем автоматически…";}
 +        }
 +        if((*worker)->stop_requested){
 +          if((*worker)->stop_since==Clock::time_point{})(*worker)->stop_since=Clock::now();
@@ -1464,7 +1715,7 @@ index 34839ba..f712206 100644
      if (reload_requested) {
        scan_requested = true;
      }
-@@ -2628,24 +2927,50 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2628,24 +2606,50 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
        scan_requested = true;
      }
  
@@ -1518,7 +1769,7 @@ index 34839ba..f712206 100644
                detail = kWindowsVirtualPortProviderUnavailable;
              } else {
                detail = kWindowsHidHideProviderUnavailable;
-@@ -2664,13 +2989,14 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2664,13 +2668,14 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
          }
  
          const std::vector<HidBluetoothDevice> hid_devices =
@@ -1536,7 +1787,7 @@ index 34839ba..f712206 100644
              logger.log(
                  vds::LogScope::Daemon, vds::LogLevel::Info,
                  "Windows bridge worker retiring address=" + worker->address +
-@@ -2688,6 +3014,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2688,6 +2693,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
          }
  
          for (const auto &config : db.controllers) {
@@ -1544,7 +1795,7 @@ index 34839ba..f712206 100644
            if (!vds::consume_vdsd_worker_retry(worker_failure_backoffs,
                                                config.address, Clock::now())) {
              continue;
-@@ -2727,7 +3054,8 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2727,7 +2733,8 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
            vds::forget_vdsd_warning_state(port_binding_warned_states,
                                           config.address);
            std::string discovery_error;
@@ -1554,7 +1805,7 @@ index 34839ba..f712206 100644
                config.address, hid_devices, &discovery_error);
            if (!connected_device) {
              if (vds::remember_vdsd_warning_state(
-@@ -2743,7 +3071,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2743,7 +2750,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
            const vds::VdsdWorkerLaunchDecision launch =
                vds::select_vdsd_worker_launch_decision(
                    config, available_virtual_ports(), reserved_ports,
@@ -1563,7 +1814,7 @@ index 34839ba..f712206 100644
                    reserved_device_addresses);
            if (launch.status ==
                vds::VdsdWorkerLaunchStatus::VirtualPortProviderUnavailable) {
-@@ -2785,11 +3113,11 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2785,11 +2792,11 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
            BridgeWorker *worker_ptr = worker.get();
            worker->thread = std::thread([worker_config = launch.config,
                                          device_address = launch.device_address,
@@ -1577,7 +1828,7 @@ index 34839ba..f712206 100644
              SetEvent(worker_ptr->done_event.get());
            });
            logger.log(
-@@ -2814,7 +3142,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2814,7 +2821,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
      }
  
      const auto now = Clock::now();
@@ -1586,7 +1837,7 @@ index 34839ba..f712206 100644
      if (!worker_failure_backoffs.empty()) {
        const auto next_retry = std::min_element(
            worker_failure_backoffs.begin(), worker_failure_backoffs.end(),
-@@ -2824,7 +3152,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2824,7 +2831,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
        if (next_retry != worker_failure_backoffs.end()) {
          if (next_retry->retry_after <= now) {
            scan_requested = true;
@@ -1595,7 +1846,7 @@ index 34839ba..f712206 100644
          }
          retry_after =
              retry_after
-@@ -2879,6 +3207,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2879,6 +2886,7 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
        wait_handles.push_back(target.handle);
      }
  
@@ -1603,7 +1854,7 @@ index 34839ba..f712206 100644
      const DWORD wait_result =
          WaitForMultipleObjects(static_cast<DWORD>(wait_handles.size()),
                                 wait_handles.data(), FALSE, INFINITE);
-@@ -2898,7 +3227,113 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
+@@ -2898,7 +2906,113 @@ void run_bridge_supervisor(const Options &options, vds::Logger &logger) {
        g_stop_requested = true;
        break;
      case WaitKind::Control:
@@ -1717,7 +1968,7 @@ index 34839ba..f712206 100644
          std::uint32_t current_trace_flags = trace_flags.load();
          const std::string reply = handle_supervisor_control_command(
              command, workers, options.db_path, current_trace_flags,
-@@ -2935,6 +3370,7 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+@@ -2935,6 +3049,7 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
    try {
      g_stop_requested = false;
      const Options options = parse_platform_args(argc, argv);
@@ -1725,7 +1976,7 @@ index 34839ba..f712206 100644
      UniqueHandle stop_event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
      if (!stop_event) {
        throw std::runtime_error("failed to create stop event: " +
-@@ -2946,6 +3382,13 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
+@@ -2946,26 +3061,29 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
      }
  
      vds::Logger logger(options.log_path);
@@ -1737,12 +1988,12 @@ index 34839ba..f712206 100644
 +      vds::win::hidhide::recover_changes();return 0;
 +    }
      try {
-       TimerResolutionGuard timer_resolution(kWindowsTimerResolutionMs);
-       logger.log(
-@@ -2953,19 +3396,21 @@ int run_windows_daemon(int argc, char **argv, bool service_mode) {
-           timer_resolution.active() ? vds::LogLevel::Info : vds::LogLevel::Warn,
-           std::string("Windows timer resolution 1 ms ") +
-               (timer_resolution.active() ? "enabled" : "request failed"));
+-      TimerResolutionGuard timer_resolution(kWindowsTimerResolutionMs);
+-      logger.log(
+-          vds::LogScope::Output,
+-          timer_resolution.active() ? vds::LogLevel::Info : vds::LogLevel::Warn,
+-          std::string("Windows timer resolution 1 ms ") +
+-              (timer_resolution.active() ? "enabled" : "request failed"));
 -      if (!virtual_port_provider_available()) {
 -        logger.log(vds::LogScope::Port, vds::LogLevel::Error,
 -                   std::string(kVirtualPortProviderUnavailableReason) +
@@ -1769,7 +2020,7 @@ index 34839ba..f712206 100644
        if (service_mode) {
          update_service_status(SERVICE_RUNNING);
          logger.log(vds::LogScope::Daemon, vds::LogLevel::Info,
-@@ -3011,7 +3456,7 @@ void WINAPI service_main(DWORD argc, LPSTR *argv) {
+@@ -3011,7 +3129,7 @@ void WINAPI service_main(DWORD argc, LPSTR *argv) {
  
    update_service_status(SERVICE_START_PENDING, ERROR_SUCCESS, 5000);
    g_service_exit_code = static_cast<DWORD>(
@@ -1778,7 +2029,7 @@ index 34839ba..f712206 100644
    update_service_status(SERVICE_STOPPED, g_service_exit_code == 0
                                               ? ERROR_SUCCESS
                                               : ERROR_SERVICE_SPECIFIC_ERROR);
-@@ -3035,6 +3480,7 @@ bool dispatch_service_if_needed() {
+@@ -3035,6 +3153,7 @@ bool dispatch_service_if_needed() {
  }
  
  int main(int argc, char **argv) {
@@ -2574,10 +2825,10 @@ index 0000000..96e973c
 +}
 diff --git a/tests/protocol_tests.cc b/tests/protocol_tests.cc
 new file mode 100644
-index 0000000..e004e40
+index 0000000..f8e2f31
 --- /dev/null
 +++ b/tests/protocol_tests.cc
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,70 @@
 +// SPDX-License-Identifier: MIT
 +#include "vds_protocol.hh"
 +#include "vds/ds5_usb.h"
@@ -2604,6 +2855,12 @@ index 0000000..e004e40
 +    check(identity.size()==18 && identity[16]==3,"USB serial descriptor index");
 +    for(unsigned i=0;i<18;++i) if(i!=16) check(identity[i]==vds_ds5_usb_device_descriptor[i],"device identity changed outside serial index");
 +    check(vds::win::usbip::stable_virtual_serial(0)!=vds::win::usbip::stable_virtual_serial(1),"port serial collision");
++    std::vector<std::uint8_t> physical_pairing(20,0x7c);physical_pairing[0]=9;
++    auto virtual_pairing=vds::win::usbip::virtual_pairing_identity(physical_pairing,0);
++    check(virtual_pairing.size()==physical_pairing.size() && virtual_pairing[6]==2 && virtual_pairing[1]==1,"virtual pairing address invalid");
++    check(physical_pairing[1]==0x7c && std::equal(virtual_pairing.begin()+7,virtual_pairing.end(),physical_pairing.begin()+7),"pairing rewrite damaged physical or unrelated data");
++    check(virtual_pairing==vds::win::usbip::virtual_pairing_identity(physical_pairing,0) && virtual_pairing!=vds::win::usbip::virtual_pairing_identity(physical_pairing,1),"virtual pairing identity unstable or colliding");
++    physical_pairing[0]=0x20;check(physical_pairing==vds::win::usbip::virtual_pairing_identity(physical_pairing,0),"firmware report identity modified");
 +    for(const auto size : {4u,78u,142u,398u}) for(const bool feature : {false,true}) {
 +      std::vector<std::uint8_t> report(size);
 +      for(unsigned i=0;i<size-4;++i) report[i]=static_cast<std::uint8_t>(i*37+0x31);
@@ -2644,11 +2901,14 @@ index 0000000..e004e40
 +}
 diff --git a/tests/usbip_deadline_tests.cc b/tests/usbip_deadline_tests.cc
 new file mode 100644
-index 0000000..21163f9
+index 0000000..72800fb
 --- /dev/null
 +++ b/tests/usbip_deadline_tests.cc
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,34 @@
++#include "platform/win32/paced_reply_budget.hh"
 +#include "platform/win32/usbip_deadline.hh"
++#include "platform/win32/io_deadline.hh"
++#include <vector>
 +#include <thread>
 +#include <stdexcept>
 +#include <iostream>
@@ -2664,6 +2924,19 @@ index 0000000..21163f9
 + {Pair p;std::jthread sender([&]{for(int i=0;i<8;++i){char c='x';send(p.client,&c,1,0);std::this_thread::sleep_for(40ms);}});char bytes[8]{};ds5link::handshake_deadline=std::chrono::steady_clock::now()+100ms;check(!ds5link::recv_exact(p.server,bytes,8),"drip extended total deadline");}
 + {Pair p;char bytes[8]{};std::atomic_bool stopped=false;ds5link::handshake_stop=&stopped;std::jthread cancel([&]{std::this_thread::sleep_for(20ms);stopped=true;});ds5link::handshake_deadline=std::chrono::steady_clock::now()+5s;auto start=std::chrono::steady_clock::now();check(!ds5link::recv_exact(p.server,bytes,8),"cancelled reader succeeded");check(std::chrono::steady_clock::now()-start<2s,"cancelled reader stuck");ds5link::handshake_stop=nullptr;}
 + {Pair p;char expected[]="12345678",bytes[8]{};send(p.client,expected,8,0);ds5link::handshake_deadline=std::chrono::steady_clock::now()+1s;check(ds5link::recv_exact(p.server,bytes,8),"valid next client failed");}
++
++ {const std::string name="\\\\.\\pipe\\DS5Link.BlockedWrite."+std::to_string(GetCurrentProcessId());
++ HANDLE server=CreateNamedPipeA(name.c_str(),PIPE_ACCESS_OUTBOUND|FILE_FLAG_OVERLAPPED,PIPE_TYPE_BYTE|PIPE_WAIT,1,4096,4096,0,nullptr);
++ check(server!=INVALID_HANDLE_VALUE,"test pipe creation failed");
++ HANDLE client=CreateFileA(name.c_str(),GENERIC_READ,0,nullptr,OPEN_EXISTING,0,nullptr);check(client!=INVALID_HANDLE_VALUE,"test pipe client failed");
++ HANDLE event=CreateEventW(nullptr,TRUE,FALSE,nullptr),stop=CreateEventW(nullptr,TRUE,FALSE,nullptr);OVERLAPPED operation{};operation.hEvent=event;
++ std::vector<char> bytes(1024*1024);DWORD count=0;check(!WriteFile(server,bytes.data(),static_cast<DWORD>(bytes.size()),&count,&operation) && GetLastError()==ERROR_IO_PENDING,"test output did not block");
++ auto start=std::chrono::steady_clock::now();check(ds5link::wait_io(server,operation,stop,30,count)==WAIT_TIMEOUT,"blocked output did not time out");check(std::chrono::steady_clock::now()-start<2s,"blocked output cancellation hung");
++ CloseHandle(client);CloseHandle(server);CloseHandle(event);CloseHandle(stop);}
++ check(ds5link::reply_budget_available(255,8*1024*1024-1,1,2s),"valid reply budget rejected");
++ check(!ds5link::reply_budget_available(256,0,1,0s),"request budget not bounded");
++ check(!ds5link::reply_budget_available(0,8*1024*1024,1,0s),"byte budget not bounded");
++ check(!ds5link::reply_budget_available(0,0,1,2001ms),"future replies not bounded");
 + WSACleanup();std::cout<<"USB/IP silent, drip, cancellation and valid read passed\n";return 0;
 + }catch(const std::exception& e){std::cerr<<e.what()<<'\n';WSACleanup();return 1;}}
 diff --git a/vcpkg.json b/vcpkg.json
@@ -2938,6 +3211,341 @@ index 0000000..24ece5f
 +  std::uint64_t gaps_=0;
 +};
 +}
+diff --git a/src/platform/win32/control_pipe_server.hh b/src/platform/win32/control_pipe_server.hh
+new file mode 100644
+index 0000000..62644d2
+--- /dev/null
++++ b/src/platform/win32/control_pipe_server.hh
+@@ -0,0 +1,329 @@
++#pragma once
++// Included inside the daemon namespace; uses its control protocol helpers.
++class ControlPipeServer {
++public:
++  ControlPipeServer(std::string pipe_name, std::string owner_sid, vds::Logger &logger)
++      : logger_(logger), pipe_name_(std::move(pipe_name)),
++        stop_event_(CreateEventA(nullptr, TRUE, FALSE, nullptr)),
++        command_event_(CreateEventA(nullptr, TRUE, FALSE, nullptr)) {
++    if (!stop_event_ || !command_event_) {
++      throw std::runtime_error("failed to create control pipe event: " +
++                               win32_error_message(GetLastError()));
++    }
++    if(owner_sid.empty()) {
++      HANDLE raw_token=nullptr;
++      if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&raw_token)) throw std::runtime_error("Cannot query control pipe owner");
++      UniqueHandle token(raw_token);DWORD size=0;GetTokenInformation(token.get(),TokenUser,nullptr,0,&size);
++      std::vector<unsigned char> buffer(size);
++      if(!GetTokenInformation(token.get(),TokenUser,buffer.data(),size,&size)) throw std::runtime_error("Cannot read control pipe owner");
++      LPSTR sid=nullptr;
++      if(!ConvertSidToStringSidA(reinterpret_cast<TOKEN_USER*>(buffer.data())->User.Sid,&sid)) throw std::runtime_error("Cannot encode owner SID");
++      owner_sid=sid;LocalFree(sid);
++    }
++    PSID sid=nullptr;
++    if(!ConvertStringSidToSidA(owner_sid.c_str(),&sid))throw std::runtime_error("Invalid owner SID");
++    LocalFree(sid);
++    const auto sddl="D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;"+owner_sid+")";
++    PSECURITY_DESCRIPTOR descriptor=nullptr;
++    if(!ConvertStringSecurityDescriptorToSecurityDescriptorA(sddl.c_str(),SDDL_REVISION_1,&descriptor,nullptr))throw std::runtime_error("Cannot secure control pipe");
++    security_.reset(descriptor);
++    thread_ = std::thread([this] { thread_main(); });
++  }
++
++  ~ControlPipeServer() { stop(); }
++
++  ControlPipeServer(const ControlPipeServer &) = delete;
++  ControlPipeServer &operator=(const ControlPipeServer &) = delete;
++
++  HANDLE command_event() const { return command_event_.get(); }
++  const std::atomic_uint64_t& busy_since() const {return busy_since_;}
++  const std::atomic_uint64_t& unresponsive_since() const {return unresponsive_since_;}
++
++  template <typename Handler> void service_ready(Handler &&handler) {
++    while (true) {
++      std::shared_ptr<ControlRequest> request;
++      {
++        std::lock_guard lock(mutex_);
++        if (requests_.empty()) {
++          ResetEvent(command_event_.get());
++          return;
++        }
++        request = requests_.front();
++        requests_.pop_front();
++      }
++
++      unresponsive_since_=0;
++      if(request->cancelled)continue;
++      std::string reply;
++      if (request->command.empty()) {
++        reply = "{\"OK\":false,\"error\":\"empty command\"}\n";
++      } else {
++        reply = handler(trim_command(request->command));
++      }
++
++      {
++        std::lock_guard lock(request->mutex);
++        request->reply = std::move(reply);
++      }
++      SetEvent(request->done_event.get());
++    }
++  }
++
++  void stop() {
++    if (stop_requested_.exchange(true)) {
++      return;
++    }
++    SetEvent(stop_event_.get());
++    complete_queued_requests("{\"OK\":false,\"error\":\"daemon stopping\"}\n");
++
++    if (thread_.joinable()) {
++      thread_.join();
++    }
++  }
++
++private:
++  struct ControlRequest {
++    std::string command;
++    std::string reply;
++    std::atomic_bool cancelled=false;
++    UniqueHandle done_event;
++    std::mutex mutex;
++  };
++
++  void complete_queued_requests(std::string reply) {
++    std::deque<std::shared_ptr<ControlRequest>> requests;
++    {
++      std::lock_guard lock(mutex_);
++      requests.swap(requests_);
++      ResetEvent(command_event_.get());
++    }
++    for (const auto &request : requests) {
++      {
++        std::lock_guard lock(request->mutex);
++        request->reply = reply;
++      }
++      SetEvent(request->done_event.get());
++    }
++  }
++
++  std::string queue_command(std::string command) {
++    auto request = std::make_shared<ControlRequest>();
++    request->command = std::move(command);
++    request->done_event.reset(CreateEventA(nullptr, TRUE, FALSE, nullptr));
++    if (!request->done_event) {
++      return "{\"OK\":false,\"error\":\"failed to queue command\"}\n";
++    }
++
++    {
++      std::lock_guard lock(mutex_);
++      if (stop_requested_) {
++        return "{\"OK\":false,\"error\":\"daemon stopping\"}\n";
++      }
++      std::uint64_t empty=0;unresponsive_since_.compare_exchange_strong(empty,GetTickCount64());
++      requests_.push_back(request);
++      SetEvent(command_event_.get());
++    }
++
++    HANDLE wait_handles[2] = {request->done_event.get(), stop_event_.get()};
++    const DWORD wait_result =
++        WaitForMultipleObjects(2, wait_handles, FALSE, 4500);
++    if (wait_result != WAIT_OBJECT_0) {
++      request->cancelled=true;
++      return "{\"OK\":false,\"error\":\"control request timed out\"}\n";
++    }
++
++    std::lock_guard lock(request->mutex);
++    return request->reply;
++  }
++
++  void thread_main() {
++    while (!stop_requested_) {
++      SECURITY_ATTRIBUTES attributes{sizeof(attributes),security_.get(),FALSE};
++      UniqueHandle pipe(CreateNamedPipeA(
++          pipe_name_.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
++          PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 65536, 65536,
++          0, &attributes));
++      if (!pipe) {
++        logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
++                    "failed to create control pipe " + pipe_name_ + ": " +
++                        win32_error_message(GetLastError()));
++        WaitForSingleObject(stop_event_.get(), 1000);
++        continue;
++      }
++
++      if (!connect_client(pipe.get()) || stop_requested_) {
++        DisconnectNamedPipe(pipe.get());
++        continue;
++      }
++
++      busy_since_=GetTickCount64();
++      handle_client(pipe.get());
++      busy_since_=0;
++      DisconnectNamedPipe(pipe.get());
++    }
++  }
++
++  bool wait_for_pipe_io(HANDLE pipe, OVERLAPPED &overlapped,
++                        DWORD &bytes_transferred, std::string_view label) {
++    HANDLE wait_handles[2] = {overlapped.hEvent, stop_event_.get()};
++    const DWORD wait_result =
++        WaitForMultipleObjects(2, wait_handles, FALSE, label=="control pipe connect"?INFINITE:5000);
++    if (wait_result == WAIT_OBJECT_0 + 1) {
++      CancelIoEx(pipe, &overlapped);
++      (void)GetOverlappedResult(pipe, &overlapped, &bytes_transferred, TRUE);
++      return false;
++    }
++    if (wait_result != WAIT_OBJECT_0) {
++      CancelIoEx(pipe, &overlapped);
++      (void)GetOverlappedResult(pipe, &overlapped, &bytes_transferred, TRUE);
++      if (!stop_requested_) {
++        logger_.log(vds::LogScope::Control, vds::LogLevel::Warn,
++                    std::string(label) +
++                        " wait failed: " + win32_error_message(GetLastError()));
++      }
++      return false;
++    }
++    if (!GetOverlappedResult(pipe, &overlapped, &bytes_transferred, FALSE)) {
++      const DWORD error = GetLastError();
++      if (!stop_requested_ && error != ERROR_NO_DATA &&
++          error != ERROR_BROKEN_PIPE) {
++        logger_.log(vds::LogScope::Control, vds::LogLevel::Warn,
++                    std::string(label) +
++                        " completion failed: " + win32_error_message(error));
++      }
++      return false;
++    }
++    return true;
++  }
++
++  bool connect_client(HANDLE pipe) {
++    UniqueHandle event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
++    if (!event) {
++      logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
++                  "failed to create control pipe connect event: " +
++                      win32_error_message(GetLastError()));
++      return false;
++    }
++
++    OVERLAPPED overlapped{};
++    overlapped.hEvent = event.get();
++    if (ConnectNamedPipe(pipe, &overlapped)) {
++      return true;
++    }
++
++    const DWORD error = GetLastError();
++    if (error == ERROR_PIPE_CONNECTED) {
++      return true;
++    }
++    if (error != ERROR_IO_PENDING) {
++      if (!stop_requested_) {
++        logger_.log(vds::LogScope::Control, vds::LogLevel::Warn,
++                    "control pipe connect failed: " +
++                        win32_error_message(error));
++      }
++      return false;
++    }
++
++    DWORD ignored = 0;
++    return wait_for_pipe_io(pipe, overlapped, ignored, "control pipe connect");
++  }
++
++  std::optional<std::string> read_command(HANDLE pipe) {
++    UniqueHandle event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
++    if (!event) {
++      logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
++                  "failed to create control pipe read event: " +
++                      win32_error_message(GetLastError()));
++      return std::nullopt;
++    }
++
++    std::string line;
++    const auto deadline=GetTickCount64()+5000;
++    while(line.size()<65536 && GetTickCount64()<deadline) {
++      std::array<char,4096> buffer{};DWORD got=0;
++      OVERLAPPED overlapped{};overlapped.hEvent=event.get();ResetEvent(event.get());
++      BOOL started=ReadFile(pipe,buffer.data(),static_cast<DWORD>(buffer.size()),&got,&overlapped);
++      DWORD error=started?ERROR_SUCCESS:GetLastError();
++      if(!started && error==ERROR_IO_PENDING) {
++        HANDLE handles[]{event.get(),stop_event_.get()};
++        const auto now=GetTickCount64();
++        auto wait=WaitForMultipleObjects(2,handles,FALSE,now>=deadline?0:static_cast<DWORD>(deadline-now));
++        if(wait!=WAIT_OBJECT_0) {CancelIoEx(pipe,&overlapped);GetOverlappedResult(pipe,&overlapped,&got,TRUE);return std::nullopt;}
++        started=GetOverlappedResult(pipe,&overlapped,&got,FALSE);error=started?ERROR_SUCCESS:GetLastError();
++      }
++      if((!started && error!=ERROR_MORE_DATA) || !got)return std::nullopt;
++      line.append(buffer.data(),got);
++      if(line.size()>65536)return std::nullopt;
++      if(line.find('\n')!=std::string::npos)return line;
++    }
++    return std::nullopt;
++  }
++
++  bool write_reply(HANDLE pipe, const std::string &reply) {
++    UniqueHandle event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
++    if (!event) {
++      logger_.log(vds::LogScope::Control, vds::LogLevel::Error,
++                  "failed to create control pipe write event: " +
++                      win32_error_message(GetLastError()));
++      return false;
++    }
++
++    DWORD written = 0;
++    OVERLAPPED overlapped{};
++    overlapped.hEvent = event.get();
++    const BOOL started =
++        WriteFile(pipe, reply.data(), static_cast<DWORD>(reply.size()),
++                  &written, &overlapped);
++    if (!started) {
++      const DWORD error = GetLastError();
++      if (error != ERROR_IO_PENDING) {
++        if (!stop_requested_) {
++          logger_.log(vds::LogScope::Control, vds::LogLevel::Warn,
++                      "control pipe reply failed: " +
++                          win32_error_message(error));
++        }
++        return false;
++      }
++      if (!wait_for_pipe_io(pipe, overlapped, written, "control pipe reply")) {
++        return false;
++      }
++    }
++    return true;
++  }
++
++  void handle_client(HANDLE pipe) {
++    const auto command = read_command(pipe);
++    if (!command) {
++      return;
++    }
++
++    const std::string reply = queue_command(*command);
++    if(write_reply(pipe, reply)) {
++      // DisconnectNamedPipe discards unread output. Drain it with a bounded
++      // synchronous flush so a slow client cannot hold the service forever.
++      UniqueHandle finished(CreateEventA(nullptr,TRUE,FALSE,nullptr));
++      HANDLE raw_thread=nullptr;
++      if(finished && DuplicateHandle(GetCurrentProcess(),GetCurrentThread(),GetCurrentProcess(),&raw_thread,0,FALSE,DUPLICATE_SAME_ACCESS)) {
++        UniqueHandle current_thread(raw_thread);
++        std::thread watchdog([&] {
++          HANDLE handles[]{finished.get(),stop_event_.get()};
++          if(WaitForMultipleObjects(2,handles,FALSE,5000)!=WAIT_OBJECT_0)CancelSynchronousIo(current_thread.get());
++        });
++        FlushFileBuffers(pipe);SetEvent(finished.get());watchdog.join();
++      }
++    }
++  }
++
++  vds::Logger &logger_;
++  std::string pipe_name_;
++  struct LocalDeleter {void operator()(void* value)const {if(value)LocalFree(value);}};
++  std::unique_ptr<void,LocalDeleter> security_;
++  UniqueHandle stop_event_;
++  UniqueHandle command_event_;
++  std::thread thread_;
++  std::atomic_bool stop_requested_ = false;
++  std::atomic_uint64_t busy_since_{0},unresponsive_since_{0};
++  std::mutex mutex_;
++  std::deque<std::shared_ptr<ControlRequest>> requests_;
++};
++
 diff --git a/src/platform/win32/ds5link_effects_runtime.hh b/src/platform/win32/ds5link_effects_runtime.hh
 new file mode 100644
 index 0000000..9be83d4
@@ -3265,6 +3873,38 @@ index 0000000..9e2ad4f
 +    if(!VIGEM_SUCCESS(vigem_target_x360_update(client_,target_,xbox_report(report))))throw std::runtime_error("Xbox input submission failed");
 +  }
 +};
++}
+diff --git a/src/platform/win32/io_deadline.hh b/src/platform/win32/io_deadline.hh
+new file mode 100644
+index 0000000..2f85759
+--- /dev/null
++++ b/src/platform/win32/io_deadline.hh
+@@ -0,0 +1,11 @@
++#pragma once
++#include <windows.h>
++namespace ds5link {
++// Caller owns OVERLAPPED and buffer until cancellation has been drained.
++inline DWORD wait_io(HANDLE handle,OVERLAPPED& operation,HANDLE stop,DWORD timeout,DWORD& count){
++ HANDLE waits[]{operation.hEvent,stop};
++ const DWORD result=WaitForMultipleObjects(2,waits,FALSE,timeout);
++ if(result!=WAIT_OBJECT_0){CancelIoEx(handle,&operation);GetOverlappedResult(handle,&operation,&count,TRUE);}
++ return result;
++}
++}
+diff --git a/src/platform/win32/paced_reply_budget.hh b/src/platform/win32/paced_reply_budget.hh
+new file mode 100644
+index 0000000..c51958f
+--- /dev/null
++++ b/src/platform/win32/paced_reply_budget.hh
+@@ -0,0 +1,9 @@
++#pragma once
++#include <chrono>
++#include <cstddef>
++namespace ds5link {
++inline bool reply_budget_available(std::size_t count,std::size_t bytes,std::size_t incoming,std::chrono::steady_clock::duration ahead){
++ constexpr std::size_t limit=8*1024*1024;
++ return count<256 && bytes<=limit && incoming<=limit-bytes && ahead<=std::chrono::seconds(2);
++}
 +}
 diff --git a/tests/audio_queue_tests.cc b/tests/audio_queue_tests.cc
 new file mode 100644

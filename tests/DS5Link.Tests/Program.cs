@@ -1,4 +1,4 @@
-﻿using System.IO.Pipes;
+using System.IO.Pipes;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -137,6 +137,15 @@ autoApply.Queue("effects",async()=>{entered.SetResult();await releasePending.Tas
 autoApply.Queue("effects",()=>{applied.Add(2);return Task.CompletedTask;});autoApply.Queue("effects",()=>{applied.Add(3);return Task.CompletedTask;});
 Check(ReferenceEquals(applying,autoApply.FlushAsync()),"Auto-apply started concurrent workers");releasePending.SetResult();await applying;
 Check(applied.SequenceEqual(new[]{1,3}) && !autoApply.HasPending,"Auto-apply replayed an old draft or lost the latest draft");
+var retrySettings=new LatestSettingsApplier();int attempts=0;
+retrySettings.Queue("input",()=>{if(++attempts==1)throw new IOException("temporary");return Task.CompletedTask;});
+try{await retrySettings.FlushAsync();}catch(IOException){}
+Check(retrySettings.HasPending,"Failed settings disappeared");await retrySettings.FlushAsync();
+Check(attempts==2 && !retrySettings.HasPending,"Failed settings were not retried");
+using(var failedCapture=new AudioReactiveCapture()){
+ failedCapture.Start(new EffectOptions{AudioEnabled=true,AudioDeviceId="DS5Link-nonexistent-test-endpoint"});
+ Check(!failedCapture.IsRunning && !string.IsNullOrEmpty(failedCapture.Error),"Failed capture reported running");
+}
 foreach(bool save in new[]{true,false}){
  var pipeName="DS5Link.Effect.Test."+Guid.NewGuid().ToString("N");using var server=new NamedPipeServerStream(pipeName,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous);
  var client=save?BridgeClient.SetEffectOptionsAsync(new EffectOptions {LedMode="pulse"},pipeName):BridgeClient.ReadEffectsAsync(17,pipeName,audioFrames:new[]{new HapticFrame(new sbyte[]{-127,0,127},1234)});await server.WaitForConnectionAsync();
@@ -153,4 +162,6 @@ if(args.Contains("--audio-smoke")){
  Console.WriteLine(JsonSerializer.Serialize(capture.Diagnostics));
  Console.WriteLine("Read-only WASAPI smoke: "+devices.Length+" output choices; capture initialized; no controller output or audio recording.");
 }
-Console.WriteLine("54 managed protocol/diagnostic/input/waveform/auto-apply scenarios passed");
+Console.WriteLine("57 managed protocol/diagnostic/input/waveform/auto-apply scenarios passed");
+
+await GameProfileTests.Run();

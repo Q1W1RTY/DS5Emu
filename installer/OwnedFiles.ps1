@@ -1,4 +1,26 @@
-# File ownership for uninstall. Never remove an installation tree recursively.
+﻿# File ownership for uninstall. Never remove an installation tree recursively.
+function Update-AppBackupRetention([string]$Install,[string]$Ledger,[string]$NewBackup,[int]$Keep=1) {
+ $installPath=[IO.Path]::GetFullPath($Install).TrimEnd('\');$parent=[IO.Path]::GetDirectoryName($installPath)
+ $prefix=[IO.Path]::GetFileName($installPath)
+ $records=@();if(Test-Path -LiteralPath $Ledger){$records=@(Get-Content -LiteralPath $Ledger -Raw|ConvertFrom-Json)}
+ if($NewBackup -and (Test-Path -LiteralPath $NewBackup)){
+  $plan=Get-AppOwnedRemovalPlan $NewBackup
+  $records=@(@{path=$plan.root;manifestHash=$plan.manifestHash})+$records
+ }
+ $remaining=@();$index=0
+ foreach($record in $records){
+  $path=[IO.Path]::GetFullPath([string]$record.path)
+  if([IO.Path]::GetDirectoryName($path) -ne $parent -or [IO.Path]::GetFileName($path) -notmatch ('^'+[regex]::Escape($prefix)+'\.backup-[a-f0-9]{32}$')){throw 'Invalid backup ledger path'}
+  if(!(Test-Path -LiteralPath $path)){continue}
+  $plan=Get-AppOwnedRemovalPlan $path
+  if($plan.manifestHash -ne $record.manifestHash){throw 'Backup ownership manifest changed'}
+  if($index -lt $Keep){$remaining+=,$record;$index++;continue}
+  $result=Remove-AppOwnedFiles $plan
+  if($result.rootRemaining){Write-Warning "Modified or foreign backup files retained: $path"}
+ }
+ $temporary=$Ledger+'.tmp';ConvertTo-Json -InputObject @($remaining) -Depth 5|Set-Content -LiteralPath $temporary -Encoding utf8
+ Move-Item -LiteralPath $temporary -Destination $Ledger -Force
+}
 function Assert-AppOwnedPath([string]$Root,[string]$Relative) {
  $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\')
  if(!$rootPath -or $rootPath.Equals([IO.Path]::GetPathRoot($rootPath).TrimEnd('\'),[StringComparison]::OrdinalIgnoreCase)){throw 'Unsafe application root'}

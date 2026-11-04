@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
@@ -18,6 +18,7 @@ internal sealed partial class MainWindow {
  }
  internal InputSettingsWindow CreateInputSettingsWindow(){
   var window=new InputSettingsWindow(inputProfile,ApplyInputSettings,preview,effectOptions,ApplyEffectSettings);
+  window.InitializeProfiles(()=>profiles,SaveProfile,DeleteProfile,activeProfile,profileLoadError);
   window.SetEffectState(current.Effects,audioEffects.Error,audioEffects.Level,audioEffects.SignalPeak,audioEffects.SourceName,current.Mode=="xbox");return window;
  }
  void ToggleInputSettings(object sender,RoutedEventArgs e)=>OpenInputSettings();
@@ -32,19 +33,20 @@ internal sealed partial class MainWindow {
   commanding=true;++stateGeneration;KeyboardOutput.ReleaseAll();inputCursor.Reset();Display(current);
   try {
    var state=await BridgeClient.SetInputOptionsAsync(next.Options);
-   try{next.Save();}catch{await BridgeClient.SetInputOptionsAsync(inputProfile.Options);throw;}
    inputProfile=next;keyboardErrorShown=false;Display(state);
    if(next.Options.TouchEnabled)inputTimer.Start();else inputTimer.Stop();
   }finally{commanding=false;Display(current);}
  }
  async Task PollInput() {
-  if(inputPolling || commanding || exiting || exitRequested || !inputProfile.Options.TouchEnabled)return;
+  if(inputPolling || profileSwitching || commanding || exiting || exitRequested || !inputProfile.Options.TouchEnabled)return;
   inputPolling=true;
   try {
+   int generation=stateGeneration;
    var batch=await BridgeClient.ReadInputEventsAsync(inputCursor.Sequence);
+   if(generation!=stateGeneration)return;
    var received=Stopwatch.StartNew();
    foreach(var action in inputCursor.Read(batch).TakeLast(4)){
-    if(commanding || exiting || exitRequested || IsActive || inputSettingsWindow?.IsActive==true || action.AgeMs+received.ElapsedMilliseconds>150)continue;
+    if(generation!=stateGeneration || !ProfileAllowsKeyboard() || commanding || exiting || exitRequested || IsActive || inputSettingsWindow?.IsActive==true || action.AgeMs+received.ElapsedMilliseconds>150)continue;
     if(inputProfile.Bindings.TryGetValue(action.Action,out var binding) && !await KeyboardOutput.SendAsync(binding) && !keyboardErrorShown){keyboardErrorShown=true;Notice("Windows не приняла назначение тачпада. Проверьте права приложения и игры.");}
    }
   }catch(Exception){inputCursor.Reset();KeyboardOutput.ReleaseAll();}

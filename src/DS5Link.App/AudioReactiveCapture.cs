@@ -50,8 +50,15 @@ internal sealed class FastLoopbackCapture:WasapiCapture {
  protected override AudioClientStreamFlags GetAudioClientStreamFlags()=>AudioClientStreamFlags.Loopback;
 }
 internal sealed class AudioReactiveCapture:IDisposable {
+ string endpointId="";long nextEndpointCheck;
+ internal bool DefaultEndpointChanged(){
+  if(Environment.TickCount64<nextEndpointCheck)return false;nextEndpointCheck=Environment.TickCount64+1000;
+  try{using var e=new MMDeviceEnumerator();using var d=e.GetDefaultAudioEndpoint(DataFlow.Render,Role.Multimedia);return d.ID!=endpointId;}catch{return true;}
+ }
  readonly object sync=new();readonly AudioWaveform waveform=new();readonly Queue<HapticFrame> frames=new();
  FastLoopbackCapture? capture;MMDevice? device;EffectOptions options=new();
+ bool running;
+ internal bool IsRunning {get{lock(sync)return running;}}
  long lastSample,packets;string deviceName="",formatName="",error="";
  internal object Diagnostics {get{lock(sync)return new{device=deviceName,format=formatName,packets,peak=waveform.RawPeak,bassRms=waveform.FilteredRms,level=waveform.Level,queued=frames.Count,error};}}
  internal double SignalPeak {get{lock(sync)return Fresh?waveform.RawPeak:0;}}
@@ -65,7 +72,7 @@ internal sealed class AudioReactiveCapture:IDisposable {
  internal void Start(EffectOptions value){
   Stop();lock(sync){options=value;error="";}if(!value.AudioEnabled)return;
   try{using var e=new MMDeviceEnumerator();device=string.IsNullOrEmpty(value.AudioDeviceId)?e.GetDefaultAudioEndpoint(DataFlow.Render,Role.Multimedia):e.GetDevice(value.AudioDeviceId);
-   deviceName=device.FriendlyName;capture=new FastLoopbackCapture(device);formatName=capture.WaveFormat.ToString();packets=0;capture.DataAvailable+=Data;capture.RecordingStopped+=Stopped;capture.StartRecording();
+   endpointId=device.ID;deviceName=device.FriendlyName;capture=new FastLoopbackCapture(device);formatName=capture.WaveFormat.ToString();packets=0;capture.DataAvailable+=Data;capture.RecordingStopped+=Stopped;lock(sync)running=true;capture.StartRecording();
   }catch(Exception ex){Stop();lock(sync)error=ex.Message;}
  }
  void Data(object? sender,WaveInEventArgs args){lock(sync){if(!ReferenceEquals(sender,capture) || capture==null || args.BytesRecorded<=0)return;
@@ -73,8 +80,8 @@ internal sealed class AudioReactiveCapture:IDisposable {
    foreach(var frame in waveform.Process(args.Buffer.AsSpan(0,args.BytesRecorded),f.SampleRate,f.Channels,f.BitsPerSample,floating,options,Environment.TickCount64)){while(frames.Count>=4)frames.Dequeue();frames.Enqueue(frame);}lastSample=Stopwatch.GetTimestamp();
   }catch(Exception ex){frames.Clear();waveform.Reset();error=ex.Message;}
  }}
- void Stopped(object? sender,StoppedEventArgs args){lock(sync){if(!ReferenceEquals(sender,capture))return;frames.Clear();waveform.Reset();lastSample=0;if(args.Exception!=null)error=args.Exception.Message;}}
- internal void Stop(){FastLoopbackCapture? old;MMDevice? oldDevice;lock(sync){old=capture;oldDevice=device;capture=null;device=null;frames.Clear();waveform.Reset();lastSample=0;}
+ void Stopped(object? sender,StoppedEventArgs args){lock(sync){if(!ReferenceEquals(sender,capture))return;running=false;frames.Clear();waveform.Reset();lastSample=0;if(args.Exception!=null)error=args.Exception.Message;}}
+ internal void Stop(){FastLoopbackCapture? old;MMDevice? oldDevice;lock(sync){old=capture;oldDevice=device;capture=null;device=null;running=false;frames.Clear();waveform.Reset();lastSample=0;}
   if(old!=null){old.DataAvailable-=Data;old.RecordingStopped-=Stopped;try{old.StopRecording();}catch(Exception ex){lock(sync)error=ex.Message;}finally{try{old.Dispose();}catch(Exception ex){lock(sync)error=ex.Message;}}}try{oldDevice?.Dispose();}catch(Exception ex){lock(sync)error=ex.Message;}
  }
  public void Dispose()=>Stop();

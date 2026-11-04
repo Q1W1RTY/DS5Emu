@@ -38,6 +38,7 @@ $shortcut=Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'DS5Link.ln
 # Both the trusted registration and this installed script must agree before deletion.
 $resolved=[IO.Path]::GetFullPath($install)
 if(!$resolved.Equals($registered,[StringComparison]::OrdinalIgnoreCase) -or !$resolved.Equals([IO.Path]::GetFullPath($PSScriptRoot),[StringComparison]::OrdinalIgnoreCase)){throw 'Unexpected uninstall root'}
+try{Update-AppBackupRetention $install (Join-Path $data 'backups.json') '' 0}catch{Write-Warning ('Backup retention deferred: '+$_.Exception.Message)}
 $removal=Remove-AppOwnedFiles $removalPlan
 if($removal.rootRemaining){Write-Host "Папка оставлена: в ней есть посторонние или изменённые файлы. $resolved"}
 Remove-Item 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DS5Link' -Recurse -ErrorAction SilentlyContinue

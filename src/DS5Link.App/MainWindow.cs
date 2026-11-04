@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -49,6 +49,7 @@ internal sealed partial class MainWindow : Window {
         InitializeComponent();
         InitializeInputControls();
         InitializeEffects();
+        InitializeGameProfiles();
         VersionText.Text = "v" + typeof(MainWindow).Assembly.GetName().Version?.ToString(3);
         MaxHeight = SystemParameters.WorkArea.Height;
 
@@ -401,7 +402,10 @@ internal sealed partial class MainWindow : Window {
             bool diagnostics = diagnosticsOpen && IsVisible && DateTime.UtcNow - lastDiagnostics > TimeSpan.FromSeconds(3);
             var state = await BridgeClient.SendAsync(diagnostics ? "getDiagnostics" : "getState");
             if (diagnostics) lastDiagnostics = DateTime.UtcNow;
-            if (generation == stateGeneration && !commanding) Display(state);
+            if (generation == stateGeneration && !commanding) {
+                if(state.InputOptions!=inputProfile.Options || (state.Effects.Options with {AudioDeviceId=effectOptions.AudioDeviceId})!=effectOptions)profileApplied=false;
+                Display(state);
+            }
         } catch (Exception) {
             if (generation == stateGeneration && !commanding)
                 Display(current with {
@@ -451,6 +455,7 @@ internal sealed partial class MainWindow : Window {
                 "Не удалось подтвердить остановку эмуляции. Закрыть только интерфейс?\n\nСлужба DS5Link может продолжить работу. Состояние контроллера не подтверждено.\n\n" + result.Error,
                 "Выход из DS5Link", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
             exiting = true;
+            profileTimer.Stop();
             effectTimer.Stop();
             audioEffects.Dispose();
             inputTimer.Stop();

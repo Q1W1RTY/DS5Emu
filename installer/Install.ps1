@@ -194,6 +194,7 @@ try{
  if(Test-Path $runBefore){if($null -ne $startupBefore){Set-ItemProperty $runBefore -Name DS5Link -Value $startupBefore}else{Remove-ItemProperty $runBefore -Name DS5Link -ErrorAction SilentlyContinue}}
  throw $failure
 }
+try{Update-AppBackupRetention $install (Join-Path $data 'backups.json') $(if($wasInstalled){$backup}else{''})}catch{Write-Warning ('Backup retention deferred: '+$_.Exception.Message)}
 if($InstallerMode){
  Stop-Transcript | Out-Null
  if(Test-Path (Join-Path $data 'reboot-required.txt')){exit 3010}

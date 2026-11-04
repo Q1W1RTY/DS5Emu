@@ -21,10 +21,14 @@ foreach($line in Get-Content (Join-Path $PackageDirectory 'files.sha256')){
 New-Item -ItemType Directory $OutputDirectory | Out-Null
 $payload=Join-Path $OutputDirectory 'payload';New-Item -ItemType Directory $payload | Out-Null
 Copy-Item (Join-Path $PackageDirectory 'app') $payload -Recurse
+foreach($culture in @('cs','de','es','fr','it','ja','ko','pl','pt-BR','tr','zh-Hans','zh-Hant')){
+ $culturePath=Join-Path $payload ('app\'+$culture)
+ if(Test-Path -LiteralPath $culturePath){foreach($file in @(Get-ChildItem -LiteralPath $culturePath -File)){if($file.Name.EndsWith('.resources.dll')){Remove-Item -LiteralPath $file.FullName}};if(!@(Get-ChildItem -LiteralPath $culturePath -Force).Count){[IO.Directory]::Delete($culturePath,$false)}}
+}
 # Publish only the UI; the hardware-tested native files above are retained.
-& (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe') publish (Join-Path $root 'src\DS5Link.App\DS5Link.App.csproj') -c Release -r win-x64 --self-contained true -p:Platform=AnyCPU -o (Join-Path $payload 'app')
+& (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe') publish (Join-Path $root 'src\DS5Link.App\DS5Link.App.csproj') -c Release -r win-x64 --self-contained true -p:Platform=AnyCPU -p:SatelliteResourceLanguages=ru -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $payload 'app')
 if($LASTEXITCODE){throw 'UI publish failed'}
-foreach($legacyFile in @('DSEmu.exe','DSEmu.dll','DSEmu.deps.json','DSEmu.runtimeconfig.json','DSEmu.pdb','DS5Emu.exe','DS5Emu.dll','DS5Emu.deps.json','DS5Emu.runtimeconfig.json','DS5Emu.pdb')){
+foreach($legacyFile in @('DS5Link.pdb','DSEmu.exe','DSEmu.dll','DSEmu.deps.json','DSEmu.runtimeconfig.json','DSEmu.pdb','DS5Emu.exe','DS5Emu.dll','DS5Emu.deps.json','DS5Emu.runtimeconfig.json','DS5Emu.pdb')){
  $legacyPath=Join-Path $payload ('app\'+$legacyFile)
  if(Test-Path -LiteralPath $legacyPath){Remove-Item -LiteralPath $legacyPath}
 }

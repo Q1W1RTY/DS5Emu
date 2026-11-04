@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -107,6 +107,21 @@ internal class Program {
    var content=(FrameworkElement)window.Content;content.Measure(viewport);content.Arrange(new Rect(new Point(),viewport));content.UpdateLayout();
    var scroll=(ScrollViewer)window.FindName("EffectsScroll");scroll.ScrollToBottom();content.UpdateLayout();if(scroll.ExtentHeight>scroll.ViewportHeight+1 && scroll.VerticalOffset<=0)throw new Exception("Audio effect settings cannot be reached");
    foreach(var position in new[]{"bottom","top"}){if(position=="top"){scroll.ScrollToTop();content.UpdateLayout();}var bmp=new RenderTargetBitmap((int)viewport.Width,(int)viewport.Height,96,96,PixelFormats.Pbgra32);bmp.Render(content);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bmp));using var file=File.Create(Path.Combine(folder,"Effects-"+viewport.Width+"-"+position+".png"));encoder.Save(file);}
+   ++checks;
+  }
+  {
+   var main=(Window)Activator.CreateInstance(wt,new object[]{true})!;
+   var catalogType=asm.GetType("DS5Link.GameProfiles")!;
+   var catalog=System.Text.Json.JsonSerializer.Deserialize("""
+    {"Games":[{"Executable":"C:\\Games\\ProfileTest.exe","Input":{"Options":{"LeftDeadzone":19,"TouchEnabled":true},"Bindings":{"tap":{"VirtualKey":65,"Modifiers":2}}},"Effects":{"Left":{"Mode":"resistance","Strength":7},"LedMode":"rainbow"}}]}
+    """,catalogType)!;
+   wt.GetField("profiles",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(main,catalog);
+   var window=(Window)wt.GetMethod("CreateInputSettingsWindow",BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(main,null)!;
+   var selector=(ComboBox)window.FindName("ProfileSelector");selector.SelectedIndex=1;
+   if(((Slider)window.FindName("LeftDeadzone")).Value!=19 || ((CheckBox)window.FindName("TouchBindingsEnabled")).IsChecked!=true)throw new Exception("Game profile selection did not load input draft");
+   if(((ComboBox)window.FindName("LedMode")).SelectedIndex!=3 || !((TextBlock)window.FindName("ProfilePath")).Text.EndsWith("ProfileTest.exe"))throw new Exception("Game profile selection did not load effect/path draft");
+   selector.SelectedIndex=0;
+   if(((Slider)window.FindName("LeftDeadzone")).Value!=0 || ((ComboBox)window.FindName("LedMode")).SelectedIndex!=0 || ((Button)window.FindName("RemoveProfileButton")).IsEnabled)throw new Exception("Returning to defaults retained game settings");
    ++checks;
   }
   Console.WriteLine(checks+" UI layout/state scenarios passed (synthetic viewport sizes; no hardware)");
