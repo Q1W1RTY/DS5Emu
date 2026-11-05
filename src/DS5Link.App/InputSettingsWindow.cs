@@ -23,6 +23,9 @@ internal sealed partial class InputSettingsWindow:Window {
  internal static readonly string[] Labels={"Нажатие слева","Нажатие справа","Касание","Свайп влево","Свайп вправо","Свайп вверх","Свайп вниз"};
  internal InputSettingsWindow(InputProfile profile,Func<InputProfile,Task> apply,bool preview=false,EffectOptions? effects=null,Func<EffectOptions,Task>? applyEffects=null){
   this.apply=apply;this.preview=preview;bindings=new(profile.Bindings);InitializeComponent();
+  var work=SystemParameters.WorkArea;
+  Width=Math.Min(1240,work.Width);Height=Math.Min(1120,work.Height);
+  MaxWidth=Width;MaxHeight=Height;
   TouchBindingsEnabled.IsChecked=profile.Options.TouchEnabled;ConsumeTouchpad.IsChecked=profile.Options.ConsumeTouchpad;
   LeftDeadzone.Value=profile.Options.LeftDeadzone;RightDeadzone.Value=profile.Options.RightDeadzone;
   for(int i=0;i<InputProfile.Actions.Length;i++){
@@ -67,10 +70,6 @@ internal sealed partial class InputSettingsWindow:Window {
  IntPtr HeaderHitTest(IntPtr hwnd,int message,IntPtr wparam,IntPtr lparam,ref bool handled){
   if(message!=0x0084)return IntPtr.Zero;
   long packed=lparam.ToInt64();var screen=new Point((short)(packed&0xffff),(short)((packed>>16)&0xffff));
-  var edge=WindowFrame.PointFromScreen(screen);int hit=0;
-  bool left=edge.X<6,right=edge.X>WindowFrame.ActualWidth-6,top=edge.Y<6,bottom=edge.Y>WindowFrame.ActualHeight-6;
-  if(left)hit=top?13:bottom?16:10;else if(right)hit=top?14:bottom?17:11;else if(top)hit=12;else if(bottom)hit=15;
-  if(hit!=0){handled=true;return new IntPtr(hit);}
   var point=DragHeader.PointFromScreen(screen);if(!new Rect(new Point(),DragHeader.RenderSize).Contains(point))return IntPtr.Zero;
   for(var source=DragHeader.InputHitTest(point) as DependencyObject;source!=null;source=source is Visual?VisualTreeHelper.GetParent(source):LogicalTreeHelper.GetParent(source)){
    if(source is System.Windows.Controls.Primitives.ButtonBase)return IntPtr.Zero;if(ReferenceEquals(source,DragHeader))break;

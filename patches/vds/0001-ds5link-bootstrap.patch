@@ -576,10 +576,11 @@ index 0000000..1a7190f
 +}
 +}
 diff --git a/src/platform/win32/vds_usbip.cc b/src/platform/win32/vds_usbip.cc
-index a50fe74..da21133 100644
+index a50fe74..0952f6d 100644
 --- a/src/platform/win32/vds_usbip.cc
 +++ b/src/platform/win32/vds_usbip.cc
-@@ -1,8 +1,10 @@
+@@ -1,8 +1,11 @@
++#include "hid_input_snapshot.hh"
 +#include "paced_reply_budget.hh"
  // SPDX-License-Identifier: MIT
  // Copyright (C) 2026 Jihong Min <hurryman2212@gmail.com>
@@ -590,7 +591,7 @@ index a50fe74..da21133 100644
  
  #include <algorithm>
  #include <array>
-@@ -42,6 +44,7 @@
+@@ -42,6 +45,7 @@
  #include "vds_io.hh"
  #include "vds_log.hh"
  #include "vds_win32.hh"
@@ -598,7 +599,7 @@ index a50fe74..da21133 100644
  
  namespace vds::win::usbip {
  
-@@ -216,19 +219,9 @@ private:
+@@ -216,19 +220,9 @@ private:
    SOCKET s_;
  };
  
@@ -621,7 +622,15 @@ index a50fe74..da21133 100644
  
  bool send_exact(SOCKET s, const void *buffer, std::size_t size) {
    const auto *data = static_cast<const char *>(buffer);
-@@ -666,8 +659,11 @@ struct VirtualPort::Impl : public std::enable_shared_from_this<Impl> {
+@@ -655,6 +649,7 @@ struct VirtualPort::Impl : public std::enable_shared_from_this<Impl> {
+   std::mutex demux_mutex;
+   std::condition_variable demux_cv;
+   std::deque<Frame> hid_in_queue;
++  ds5link::HidInputSnapshot hid_input_snapshot;
+   std::deque<Frame> feature_reply_queue;
+   std::vector<std::uint8_t> mic_ring_buffer;
+   bool mic_primed = false;
+@@ -666,8 +661,11 @@ struct VirtualPort::Impl : public std::enable_shared_from_this<Impl> {
  
    struct PacedReply {
      SOCKET client;
@@ -633,7 +642,7 @@ index a50fe74..da21133 100644
    std::thread iso_pacer_thread;
    std::mutex pacer_mutex;
    std::condition_variable pacer_cv;
-@@ -851,6 +847,9 @@ private:
+@@ -851,6 +849,9 @@ private:
      try {
        std::thread([port, client = std::move(client)]() mutable {
          try {
@@ -643,7 +652,7 @@ index a50fe74..da21133 100644
            port->handle_import_session(client.get());
          } catch (const std::exception &error) {
            try {
-@@ -921,7 +920,16 @@ private:
+@@ -921,7 +922,16 @@ private:
        if (stop_requested.load()) {
          return;
        }
@@ -660,7 +669,7 @@ index a50fe74..da21133 100644
      }
    }
  
-@@ -1031,13 +1039,15 @@ void VirtualPort::Impl::iso_pacer_loop() {
+@@ -1031,13 +1041,15 @@ void VirtualPort::Impl::iso_pacer_loop() {
      }
      PacedReply reply = std::move(it->second);
      paced_replies.erase(it);
@@ -677,7 +686,7 @@ index a50fe74..da21133 100644
      lk.lock();
    }
    if (high_res) {
-@@ -1093,6 +1103,7 @@ void VirtualPort::Impl::handle_import_session(SOCKET client) {
+@@ -1093,6 +1105,7 @@ void VirtualPort::Impl::handle_import_session(SOCKET client) {
    attached = true;
    auto cleanup_connection = [this]() noexcept {
      attached = false;
@@ -685,7 +694,38 @@ index a50fe74..da21133 100644
      try {
        std::lock_guard<std::mutex> guard(pacer_mutex);
        paced_replies.clear();
-@@ -1412,9 +1423,11 @@ bool VirtualPort::Impl::handle_cmd_submit(
+@@ -1292,6 +1305,7 @@ void VirtualPort::Impl::pipe_reader_loop() {
+     std::lock_guard<std::mutex> lk(demux_mutex);
+     switch (frame.header.type) {
+     case VDS_FRAME_USB_HID_IN:
++      if(!hid_input_snapshot.update(frame.payload))break;
+       hid_in_queue.push_back(std::move(frame));
+       // Bound the queue: if the HID_IN handler stalls (e.g. blocked on
+       // something else) we want to drop stale reports, not build
+@@ -1325,13 +1339,16 @@ void VirtualPort::Impl::pipe_reader_loop() {
+ 
+ bool VirtualPort::Impl::wait_for_hid_in_frame(Frame &out, DWORD timeout_ms) {
+   std::unique_lock<std::mutex> lk(demux_mutex);
+-  if (!demux_cv.wait_for(lk, std::chrono::milliseconds(timeout_ms), [this] {
+-        return !hid_in_queue.empty() || stop_requested.load();
+-      })) {
+-    return false;
++  demux_cv.wait_for(lk, std::chrono::milliseconds(timeout_ms), [this] {
++    return !hid_in_queue.empty() || stop_requested.load();
++  });
++  if(stop_requested.load())return false;
++  if(hid_in_queue.empty()){
++    out.header.type=VDS_FRAME_USB_HID_IN;
++    const auto& snapshot=hid_input_snapshot.report();
++    out.payload.assign(snapshot.begin(),snapshot.end());
++    return true;
+   }
+-  if (hid_in_queue.empty())
+-    return false;
+   out = std::move(hid_in_queue.front());
+   hid_in_queue.pop_front();
+   return true;
+@@ -1412,9 +1429,11 @@ bool VirtualPort::Impl::handle_cmd_submit(
        const std::uint8_t desc_index = static_cast<std::uint8_t>(wValue & 0xff);
        const std::uint8_t *src = nullptr;
        std::size_t len = 0;
@@ -699,7 +739,7 @@ index a50fe74..da21133 100644
        } else if (desc_type == 0x02) { // CONFIGURATION
          src = desc.config;
          len = desc.config_len;
-@@ -1426,8 +1439,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
+@@ -1426,8 +1445,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
          len = desc.hid_report_len;
        } else if (desc_type == 0x03) { // STRING
          // Index 0 is the language-ID list; index 1 is iManufacturer,
@@ -709,7 +749,7 @@ index a50fe74..da21133 100644
          std::vector<std::uint8_t> built;
          if (desc_index == 0) {
            built = build_langid_descriptor();
-@@ -1437,6 +1449,8 @@ bool VirtualPort::Impl::handle_cmd_submit(
+@@ -1437,6 +1455,8 @@ bool VirtualPort::Impl::handle_cmd_submit(
            built = build_string_descriptor(profile == VDS_PROFILE_DSE
                                                ? VDS_DSE_USB_PRODUCT_STRING
                                                : VDS_DS5_USB_PRODUCT_STRING);
@@ -718,7 +758,7 @@ index a50fe74..da21133 100644
          }
          if (!built.empty()) {
            const std::size_t copy_len =
-@@ -1491,7 +1505,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
+@@ -1491,7 +1511,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
        Frame reply;
        wait_for_feature_reply(reply, 500);
        if (reply.header.type == VDS_FRAME_USB_FEATURE_REPLY) {
@@ -727,7 +767,18 @@ index a50fe74..da21133 100644
          // Never return more than the host asked for. A control-IN reply whose
          // actual_length exceeds the requested wLength is a wire violation that
          // makes usbip-win2 reset the whole TCP connection (dropping every
-@@ -1706,6 +1720,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
+@@ -1575,8 +1595,8 @@ bool VirtualPort::Impl::handle_cmd_submit(
+     Frame frame;
+     if (wait_for_hid_in_frame(frame, 50)) {
+       reply_data = frame.payload;
+-    }
+-    ret.status = 0;
++      ret.status = 0;
++    }else ret.status = -19; // Device stopped; never report empty success.
+   } else if (cmd.base.ep == kEpHidOut && cmd.base.direction == kDirOut) {
+     write_daemon_frame(pipe_server.get(), VDS_FRAME_USB_HID_OUT, out_data);
+     ret.status = 0;
+@@ -1706,6 +1726,7 @@ bool VirtualPort::Impl::handle_cmd_submit(
    if (pace_out || pace_in) {
      PacedReply paced{};
      paced.client = client;
@@ -735,7 +786,7 @@ index a50fe74..da21133 100644
      const std::size_t data_len = pace_in ? reply_data.size() : 0;
      const std::size_t iso_len =
          reply_iso.size() * sizeof(UsbipIsoPacketDescriptor);
-@@ -1727,6 +1742,9 @@ bool VirtualPort::Impl::handle_cmd_submit(
+@@ -1727,6 +1748,9 @@ bool VirtualPort::Impl::handle_cmd_submit(
            anchor < now - std::chrono::milliseconds(250)) {
          anchor = now; // stream (re)start: first URB completes now
        }
@@ -2825,10 +2876,11 @@ index 0000000..96e973c
 +}
 diff --git a/tests/protocol_tests.cc b/tests/protocol_tests.cc
 new file mode 100644
-index 0000000..f8e2f31
+index 0000000..a189654
 --- /dev/null
 +++ b/tests/protocol_tests.cc
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,81 @@
++#include "platform/win32/hid_input_snapshot.hh"
 +// SPDX-License-Identifier: MIT
 +#include "vds_protocol.hh"
 +#include "vds/ds5_usb.h"
@@ -2851,6 +2903,16 @@ index 0000000..f8e2f31
 +
 +int main() {
 +  try {
++    ds5link::HidInputSnapshot snapshot;
++    const auto neutral=snapshot.report();
++    check(neutral.size()==64 && neutral[0]==1 && neutral[8]==8 && neutral[9]==0 && neutral[10]==0,"Initial HID state has phantom buttons");
++    check(neutral[1]==128 && neutral[2]==128 && neutral[3]==128 && neutral[4]==128 && neutral[5]==0 && neutral[6]==0,"Initial HID axes are not neutral");
++    check(neutral[33]==128 && neutral[37]==128,"Initial HID touches active");
++    auto pressed=neutral;pressed[8]=0x28;
++    check(snapshot.update(pressed) && snapshot.report()==pressed,"Real HID state not retained across input gap");
++    check(!snapshot.update(std::span<const std::uint8_t>(pressed).first(10)) && snapshot.report()==pressed,"Short input replaced complete snapshot");
++    pressed[0]=0x31;
++    check(!snapshot.update(pressed) && snapshot.report()[0]==1,"Bluetooth format leaked into USB snapshot");
 +    const auto identity=vds::win::usbip::device_descriptor_with_serial(vds_ds5_usb_device_descriptor);
 +    check(identity.size()==18 && identity[16]==3,"USB serial descriptor index");
 +    for(unsigned i=0;i<18;++i) if(i!=16) check(identity[i]==vds_ds5_usb_device_descriptor[i],"device identity changed outside serial index");
@@ -3872,6 +3934,32 @@ index 0000000..9e2ad4f
 +  void update(std::span<const std::uint8_t> report) {
 +    if(!VIGEM_SUCCESS(vigem_target_x360_update(client_,target_,xbox_report(report))))throw std::runtime_error("Xbox input submission failed");
 +  }
++};
++}
+diff --git a/src/platform/win32/hid_input_snapshot.hh b/src/platform/win32/hid_input_snapshot.hh
+new file mode 100644
+index 0000000..043c4a5
+--- /dev/null
++++ b/src/platform/win32/hid_input_snapshot.hh
+@@ -0,0 +1,20 @@
++#pragma once
++#include <array>
++#include <algorithm>
++#include <cstdint>
++#include <span>
++
++namespace ds5link {
++// Protected by the USB/IP demultiplexer mutex. Enumeration can precede
++// the first physical input packet; never complete a poll with empty data.
++class HidInputSnapshot {
++ std::array<std::uint8_t,64> report_{};
++public:
++ HidInputSnapshot(){report_[0]=1;for(unsigned i=1;i<=4;++i)report_[i]=128;report_[8]=8;report_[33]=report_[37]=128;}
++ bool update(std::span<const std::uint8_t> report){
++  if(report.size()!=report_.size() || report[0]!=1)return false;
++  std::copy(report.begin(),report.end(),report_.begin());return true;
++ }
++ const auto& report()const{return report_;}
 +};
 +}
 diff --git a/src/platform/win32/io_deadline.hh b/src/platform/win32/io_deadline.hh

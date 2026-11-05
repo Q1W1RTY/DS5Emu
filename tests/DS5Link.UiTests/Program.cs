@@ -81,7 +81,7 @@ internal class Program {
    if(!output.Equals((0d,0d)))throw new Exception("Deadzone preview failed to center raw stick");
    var content=(FrameworkElement)window.Content;content.Measure(viewport);content.Arrange(new Rect(new Point(),viewport));content.UpdateLayout();
    var settingsScroll=(ScrollViewer)window.FindName("SettingsScroll");settingsScroll.ScrollToBottom();content.UpdateLayout();
-   if(settingsScroll.ExtentHeight>settingsScroll.ViewportHeight+1 && settingsScroll.VerticalOffset<=0)throw new Exception("Settings footer cannot be reached");
+   if(window.ResizeMode!=ResizeMode.NoResize || settingsScroll.VerticalScrollBarVisibility!=ScrollBarVisibility.Disabled || settingsScroll.ScrollableHeight>0)throw new Exception("Settings must fit without scrolling in a fixed window");
    settingsScroll.ScrollToTop();content.UpdateLayout();
    var bmp=new RenderTargetBitmap((int)viewport.Width,(int)viewport.Height,96,96,PixelFormats.Pbgra32);bmp.Render(content);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bmp));using var file=File.Create(Path.Combine(folder,"Input-window-"+viewport.Width+".png"));encoder.Save(file);
    pt.GetProperty("AgeMs")!.SetValue(sample,600);setter.Invoke(window,new[]{sample});
@@ -105,7 +105,7 @@ internal class Program {
    ((ComboBox)window.FindName("TriggerPreset")).SelectedIndex=4;((ComboBox)window.FindName("LedMode")).SelectedIndex=1;
    if(((StackPanel)window.FindName("TriggerEditors")).Children.Count!=2)throw new Exception("Independent trigger editors missing");
    var content=(FrameworkElement)window.Content;content.Measure(viewport);content.Arrange(new Rect(new Point(),viewport));content.UpdateLayout();
-   var scroll=(ScrollViewer)window.FindName("EffectsScroll");scroll.ScrollToBottom();content.UpdateLayout();if(scroll.ExtentHeight>scroll.ViewportHeight+1 && scroll.VerticalOffset<=0)throw new Exception("Audio effect settings cannot be reached");
+   var scroll=(ScrollViewer)window.FindName("EffectsScroll");scroll.ScrollToBottom();content.UpdateLayout();if(scroll.VerticalScrollBarVisibility!=ScrollBarVisibility.Disabled || scroll.ScrollableHeight>0)throw new Exception("Effects must fit without scrolling");
    foreach(var position in new[]{"bottom","top"}){if(position=="top"){scroll.ScrollToTop();content.UpdateLayout();}var bmp=new RenderTargetBitmap((int)viewport.Width,(int)viewport.Height,96,96,PixelFormats.Pbgra32);bmp.Render(content);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bmp));using var file=File.Create(Path.Combine(folder,"Effects-"+viewport.Width+"-"+position+".png"));encoder.Save(file);}
    ++checks;
   }
