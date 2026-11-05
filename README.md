@@ -1,11 +1,11 @@
 <a id="readme"></a>
 <div align="center">
 
-<img src="assets/readme/header.svg" width="100%" alt="DS5Link — Your DualSense. Wirelessly.">
+<img src="assets/readme/header-generated.png" width="100%" alt="DS5Link — Your DualSense. Wirelessly.">
 
-**[Download](https://github.com/Q1W1RTY/DS5Link/releases/latest/download/DS5Link-Setup.exe)** · **[Quick start](#quick-start)** · **[Screenshots](#screenshots)** · **[Changelog](docs/releases/CHANGELOG.md)** · **[Report an issue](https://github.com/Q1W1RTY/DS5Link/issues)**
+<p align="center"><a href="https://github.com/Q1W1RTY/DS5Link/releases/latest/download/DS5Link-Setup.exe"><img src="assets/readme/nav/download.svg" height="36" alt="Download"></a> <a href="#quick-start"><img src="assets/readme/nav/quick-start.svg" height="36" alt="Quick start"></a> <a href="#screenshots"><img src="assets/readme/nav/screenshots.svg" height="36" alt="Screenshots"></a> <a href="docs/releases/CHANGELOG.md"><img src="assets/readme/nav/changelog.svg" height="36" alt="Changelog"></a> <a href="https://github.com/Q1W1RTY/DS5Link/issues"><img src="assets/readme/nav/issues.svg" height="36" alt="Report an issue"></a></p>
 
-[![Latest release](https://img.shields.io/github/v/release/Q1W1RTY/DS5Link?style=flat-square&color=45cfa1&label=release)](https://github.com/Q1W1RTY/DS5Link/releases/latest) ![Windows 11 x64](https://img.shields.io/badge/Windows-11%20x64-0078D4?style=flat-square) ![DualSense](https://img.shields.io/badge/controller-DualSense-30363d?style=flat-square)
+[![Latest release](assets/readme/nav/release.svg)](https://github.com/Q1W1RTY/DS5Link/releases/latest) ![Windows 11 x64](https://img.shields.io/badge/Windows-11%20x64-0078D4?style=flat-square) ![DualSense](https://img.shields.io/badge/controller-DualSense-30363d?style=flat-square)
 
 **English** · [Русский ↓](#russian)
 

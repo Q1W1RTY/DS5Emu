@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="142" height="36" viewBox="0 0 142 36" role="img" aria-label="Quick start">
+<rect x=".5" y=".5" width="141" height="35" rx="8" fill="#19282e" stroke="#30454d"/>
+<g transform="translate(13 8) scale(.82)" fill="none" stroke="#61e8bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 10-13h-7z"/></g>
+<text x="43" y="22.5" fill="#e5eef2" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="600">Quick start</text>
+</svg>
