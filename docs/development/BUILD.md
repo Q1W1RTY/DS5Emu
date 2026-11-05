@@ -1,9 +1,9 @@
-﻿# Сборка
+# Сборка
 
 Нужны Windows 11 x64, Git, Visual Studio 2022 Build Tools (C++ x64, CMake, Ninja, Windows SDK) и .NET SDK из global.json. Использованные версии: MSVC 14.44, SDK 10.0.26100, .NET SDK 10.0.403.
 
 ```powershell
-git clone --recurse-submodules https://github.com/Q1W1RTY/DS5Emu.git
+git clone --recurse-submodules https://github.com/Q1W1RTY/DS5Link.git
 cd DS5Link
 .\scripts\prepare-engine.ps1
 .\scripts\build.ps1

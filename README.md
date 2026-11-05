@@ -1,77 +1,133 @@
+<a id="readme"></a>
 <div align="center">
-<img src="assets/brand/DS5Link.png" width="80" alt="DS5Link">
 
-# DS5Link
+<img src="assets/readme/header.svg" width="100%" alt="DS5Link — Your DualSense. Wirelessly.">
 
-DualSense по Bluetooth с возможностями проводного подключения на Windows.
+**[Download](https://github.com/Q1W1RTY/DS5Link/releases/latest/download/DS5Link-Setup.exe)** · **[Quick start](#quick-start)** · **[Screenshots](#screenshots)** · **[Changelog](docs/releases/CHANGELOG.md)** · **[Report an issue](https://github.com/Q1W1RTY/DS5Link/issues)**
 
-**[Скачать DS5Link 0.1.28](https://github.com/Q1W1RTY/DS5Emu/releases/download/v0.1.28/DS5Link-Setup.exe)** · [Релиз](https://github.com/Q1W1RTY/DS5Emu/releases/latest) · [Инструкция](docs/user/INSTALL.md)
+[![Latest release](https://img.shields.io/github/v/release/Q1W1RTY/DS5Link?style=flat-square&color=45cfa1&label=release)](https://github.com/Q1W1RTY/DS5Link/releases/latest) ![Windows 11 x64](https://img.shields.io/badge/Windows-11%20x64-0078D4?style=flat-square) ![DualSense](https://img.shields.io/badge/controller-DualSense-30363d?style=flat-square)
 
-Windows 11 x64 · DualSense · Bluetooth / USB
+**English** · [Русский ↓](#russian)
+
 </div>
 
-## Возможности
+## Your controller, more ways to play
 
-- **PS5-режим:** виртуальный USB DualSense, нативные адаптивные курки, HD haptics и звук в поддерживаемых играх.
-- **Xbox-режим:** Xbox 360 / XInput по Bluetooth и USB, обычная игровая вибрация.
-- **Настройки ввода:** мёртвые зоны стиков и назначение клавиш на зоны и жесты тачпада с наглядным предпросмотром.
-- **Курки:** отдельные эффекты для L2 и R2, сила сопротивления и пресеты.
-- **LED:** постоянный цвет, пульсация, радуга и индикация заряда.
-- **Звук → haptics:** отдача от выбранного звукового выхода Windows, чувствительность и порог тишины. Доступно в PS5-режиме.
-- **Удобства:** автоматическое применение настроек, работа в трее, автозапуск, заряд батареи и диагностический ZIP.
+DS5Link brings a virtual USB DualSense to Windows over Bluetooth. Use native adaptive triggers, HD haptics and controller audio in supported games, or switch to Xbox / XInput compatibility. Manage everything from a compact desktop app that stays in your tray.
 
-Игра имеет приоритет над ручными эффектами для каналов, которыми она управляет.
+| Mode | Connection | What you get |
+| :--- | :--- | :--- |
+| **PS5** | Bluetooth | Virtual USB DualSense, native triggers, HD haptics and controller audio in supported games |
+| **Xbox** | Bluetooth or USB | Xbox 360 / XInput compatibility and standard rumble |
 
-## Интерфейс
+### Make it yours
 
-Скриншоты версии **0.1.28**. Нажмите на изображение, чтобы открыть в полном размере.
+- **Game profiles** — bind settings to a game's EXE and apply them when its window is focused.
+- **Touchpad & sticks** — keyboard bindings for touchpad clicks and gestures, independent stick deadzones and live input previews.
+- **Adaptive triggers** — tune L2 and R2 separately with resistance, weapon and pulse effects, or use a preset.
+- **Lighting** — solid colors, pulse, rainbow and battery-level indication.
+- **Audio → haptics** — turn a selected Windows audio output into haptic feedback, with sensitivity, strength and noise-gate controls.
+- **Everyday essentials** — tray controls, optional startup with Windows, battery status and diagnostic ZIP export.
+
+Games retain priority over manual effects on the channels they control. Audio → haptics is available in PS5 mode over Bluetooth.
+
+<a id="screenshots"></a>
+## A closer look
+
+Compact previews — click any image to open it at full size. UI previews from development build 0.1.36; release builds may differ.
 
 <table>
-<tr><th>Главное окно</th><th>Диагностика</th></tr>
+<tr><th>Main window</th><th>Connection diagnostics</th></tr>
 <tr>
-<td valign="top" align="center"><a href="docs/design/main.png"><img src="docs/design/main.png" width="320" alt="DS5Link: подключённый DualSense и выбор режима эмуляции"></a></td>
-<td valign="top" align="center"><a href="docs/design/advanced.png"><img src="docs/design/advanced.png" width="320" alt="Диагностика соединения, последние события и экспорт журнала"></a></td>
+<td align="center" valign="top"><a href="assets/readme/main-en.png"><img src="assets/readme/main-en.png" height="250" alt="DS5Link main window: controller status, PS5 and Xbox modes"></a></td>
+<td align="center" valign="top"><a href="assets/readme/diagnostics-en.png"><img src="assets/readme/diagnostics-en.png" height="250" alt="Connection metrics, recent events and diagnostic export"></a></td>
+</tr>
+<tr><th>Touchpad & sticks</th><th>Triggers, lighting & audio</th></tr>
+<tr>
+<td align="center" valign="top"><a href="assets/readme/input-en.png"><img src="assets/readme/input-en.png" height="250" alt="Touchpad keyboard bindings and stick deadzone preview"></a></td>
+<td align="center" valign="top"><a href="assets/readme/effects-en.png"><img src="assets/readme/effects-en.png" height="250" alt="Independent adaptive triggers, lighting and audio haptics settings"></a></td>
 </tr>
 </table>
 
-### Тачпад и стики
-
-Зоны и жесты тачпада, назначения клавиш, положение стиков и мёртвые зоны.
-
-![Настройки тачпада и стиков](docs/design/settings-input.png)
-
-### Курки, LED и звук
-
-Все параметры в одном окне: L2 / R2, режимы подсветки и звуковая отдача.
-
-![Полное окно настроек курков, подсветки и звуковой отдачи](docs/design/settings-effects.png)
-
+<details>
+<summary>Installer & tray menu</summary>
+<br>
 <table>
-<tr><th>Установщик</th><th>Меню в трее</th></tr>
+<tr><th>Guided setup</th><th>Tray controls</th></tr>
 <tr>
-<td valign="top" align="center"><a href="docs/design/setup.png"><img src="docs/design/setup.png" width="480" alt="Установщик DS5Link с проверкой драйверов и выбором папки"></a></td>
-<td valign="top" align="center"><a href="docs/design/tray.png"><img src="docs/design/tray.png" width="265" alt="Быстрые действия DS5Link в трее"></a></td>
+<td align="center" valign="top"><a href="docs/design/setup.png"><img src="docs/design/setup.png" width="360" alt="DS5Link installer and dependency checks"></a></td>
+<td align="center" valign="top"><a href="docs/design/tray.png"><img src="docs/design/tray.png" width="190" alt="DS5Link tray menu"></a></td>
 </tr>
 </table>
+</details>
 
-## Установка
+<a id="quick-start"></a>
+## Up and running
 
-1. Скачать и запустить **DS5Link-Setup.exe** из [последнего релиза](https://github.com/Q1W1RTY/DS5Emu/releases/latest).
-2. Установщик проверит зависимости. Установить недостающие драйверы и приложение; совместимые установленные драйверы пропускаются.
-3. Для Bluetooth удерживать **Create + PS** до мигания и добавить DualSense в параметрах Windows.
-4. Открыть DS5Link и выбрать **PS5** или **Xbox**.
+**Requirements:** Windows 11 x64, one standard DualSense and a Bluetooth adapter for PS5 mode. Administrator rights are required for installation. DualSense Edge is not supported by this profile.
 
-Нужны Windows 11 x64, обычный DualSense и права администратора для установки. Если установщик попросит перезагрузку, выполнить её. По USB доступна эмуляция Xbox; PS5-режим предназначен для Bluetooth.
+1. **[Download DS5Link-Setup.exe](https://github.com/Q1W1RTY/DS5Link/releases/latest/download/DS5Link-Setup.exe)** and run it.
+2. Let setup check the bundled drivers, then install or repair any missing dependencies. Restart Windows if prompted.
+3. Hold **Create + PS** until the controller flashes, then pair it in Windows Bluetooth settings.
+4. Open DS5Link and select **PS5** or **Xbox**. For PS5 emulation, connect over Bluetooth; over USB, use the controller directly or select Xbox mode.
 
-## Что учитывать
+[Detailed installation guide (Русский)](docs/user/INSTALL.md) · [All releases](https://github.com/Q1W1RTY/DS5Link/releases)
 
-- Нативные эффекты и звук геймпада зависят от поддержки DualSense в игре. Если мешает Steam Input, отключить его для этой игры; другие программы эмуляции закрыть.
-- Windows может выбрать DualSense основным звуковым устройством. При необходимости вернуть привычный выход или микрофон в параметрах звука.
-- Если после обновления LED не горит, удерживать PS около 10 секунд для полного выключения геймпада и включить его снова.
-- Установщик приложения пока не подписан сертификатом издателя; драйверы используют собственные подписанные установщики. Полная игровая проверка последней сборки ещё не завершена.
+### Good to know
 
-## Разработка
+- Native DualSense features depend on game support. If Steam Input interferes, disable it for that game; close other controller emulators such as DSX.
+- Windows may select DualSense as the default audio device. Choose your usual speakers, headphones or microphone again if needed.
+- The app installer is currently unsigned; bundled drivers use their own signed installers. Keep Windows security enabled.
+- Game compatibility is still being tested. When reporting a problem, include the game, PS5/Xbox mode, connection type and a diagnostic ZIP.
+
+## Built on good foundations
+
+The controller engine is based on **[vDS](https://github.com/hurryman2212/vds)**, with **[usbip-win2](https://github.com/vadimgrn/usbip-win2)**, **[HidHide](https://github.com/nefarius/HidHide)** and **[ViGEmBus](https://github.com/nefarius/ViGEmBus)**.
+
+[Build & test (Русский)](docs/development/BUILD.md) · [Architecture (Русский)](docs/architecture/ARCHITECTURE.md) · [Changelog](docs/releases/CHANGELOG.md) · [Issues](https://github.com/Q1W1RTY/DS5Link/issues)
+
+---
+
+<a id="russian"></a>
+## Русский
+
+[↑ English](#readme) · **[Скачать](https://github.com/Q1W1RTY/DS5Link/releases/latest/download/DS5Link-Setup.exe)** · [Скриншоты](#screenshots) · [Инструкция](docs/user/INSTALL.md) · [Сообщить о проблеме](https://github.com/Q1W1RTY/DS5Link/issues)
+
+**DS5Link — возможности проводного DualSense по Bluetooth на Windows.** В PS5-режиме приложение создаёт виртуальный USB DualSense для нативных курков, HD haptics и звука в поддерживаемых играх. Xbox-режим даёт совместимость с Xbox 360 / XInput по Bluetooth и USB.
+
+### Что умеет
+
+- **Профили игр:** привязка настроек к EXE и применение при активном окне игры.
+- **Тачпад и стики:** назначения клавиш на нажатия и жесты, отдельные мёртвые зоны, предпросмотр ввода.
+- **Адаптивные курки:** отдельная настройка L2 и R2, сопротивление, спуск, пульсация и пресеты.
+- **Подсветка:** постоянный цвет, пульсация, радуга и индикация заряда.
+- **Звук → haptics:** отдача от выбранного выхода Windows с настройкой чувствительности, силы и порога тишины; PS5-режим по Bluetooth.
+- **На каждый день:** управление из трея, автозапуск, заряд батареи и экспорт диагностики в ZIP.
+
+Игра имеет приоритет над ручными эффектами для каналов, которыми она управляет. [Галерея интерфейса ↑](#screenshots)
+
+### Быстрый старт
+
+Нужны **Windows 11 x64**, один обычный DualSense и Bluetooth-адаптер для PS5-режима. Для установки требуются права администратора. DualSense Edge этим профилем не поддерживается.
+
+1. **[Скачайте DS5Link-Setup.exe](https://github.com/Q1W1RTY/DS5Link/releases/latest/download/DS5Link-Setup.exe)** и запустите его.
+2. Установщик проверит комплект драйверов. Установите или восстановите недостающие компоненты и перезагрузите Windows, если мастер попросит.
+3. Удерживайте **Create + PS** до мигания и добавьте DualSense в параметрах Bluetooth Windows.
+4. Откройте DS5Link и выберите **PS5** или **Xbox**. Эмуляция PS5 работает по Bluetooth; по USB используйте контроллер напрямую или выберите Xbox.
+
+[Подробная инструкция](docs/user/INSTALL.md) · [Все релизы](https://github.com/Q1W1RTY/DS5Link/releases)
+
+### Что учитывать
+
+- Нативные функции DualSense зависят от поддержки игры. Если мешает Steam Input, отключите его для этой игры; другие эмуляторы, включая DSX, закройте.
+- Windows может выбрать DualSense основным звуковым устройством. При необходимости верните привычный выход или микрофон в параметрах звука.
+- Установщик приложения пока без подписи издателя; установщики драйверов используют собственные подписи. Отключать защиту Windows не нужно.
+- Проверка совместимости с играми продолжается. В сообщении о проблеме укажите игру, режим PS5/Xbox, тип подключения и приложите диагностический ZIP.
 
 [Сборка и тесты](docs/development/BUILD.md) · [Архитектура](docs/architecture/ARCHITECTURE.md) · [История изменений](docs/releases/CHANGELOG.md)
 
-Основа эмуляции — [vDS](https://github.com/hurryman2212/vds). Драйверы: [usbip-win2](https://github.com/vadimgrn/usbip-win2), [HidHide](https://github.com/nefarius/HidHide) и [ViGEmBus](https://github.com/nefarius/ViGEmBus).
+<div align="center">
+
+**[Download / Скачать](https://github.com/Q1W1RTY/DS5Link/releases/latest/download/DS5Link-Setup.exe)** · [Releases](https://github.com/Q1W1RTY/DS5Link/releases) · [Issues](https://github.com/Q1W1RTY/DS5Link/issues)
+
+</div>
