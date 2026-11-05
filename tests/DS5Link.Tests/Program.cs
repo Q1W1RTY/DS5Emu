@@ -8,11 +8,11 @@ static void Check(bool value,string message){if(!value)throw new Exception(messa
 static async Task TestClient(string scenario) {
  var name="DS5Link.ClientTest."+Guid.NewGuid().ToString("N");
  using var server=new NamedPipeServerStream(name,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous);
- var client=scenario=="options"?BridgeClient.SetInputOptionsAsync(new InputOptions {LeftDeadzone=10},name):BridgeClient.SendAsync("getState",name);
+ var client=scenario=="options"?BridgeClient.SetInputOptionsAsync(new InputOptions {LeftDeadzone=10,TouchClickMask=1},name):BridgeClient.SendAsync("getState",name);
  await server.WaitForConnectionAsync();
  using var reader=new StreamReader(server,Encoding.UTF8,false,1024,true);
  var line=await reader.ReadLineAsync();using var request=JsonDocument.Parse(line!);
- if(scenario=="options")Check(request.RootElement.GetProperty("options").GetProperty("leftDeadzone").GetInt32()==10,"Input options wire casing is incompatible with native service");
+ if(scenario=="options")Check(request.RootElement.GetProperty("options").GetProperty("leftDeadzone").GetInt32()==10 && request.RootElement.GetProperty("options").GetProperty("touchClickMask").GetInt32()==1,"Input options wire casing is incompatible with native service");
  var id=request.RootElement.GetProperty("id").GetString();
  string response=scenario switch {
   "id"=>JsonSerializer.Serialize(new{protocolVersion=1,id="wrong",ok=true,payload=new{state="Active"}}),
@@ -165,3 +165,9 @@ if(args.Contains("--audio-smoke")){
 Console.WriteLine("57 managed protocol/diagnostic/input/waveform/auto-apply scenarios passed");
 
 await GameProfileTests.Run();
+
+var partialTouch=new InputProfile {Bindings=new(){["tap"]=new(0x41,0)}};
+Check(partialTouch.RuntimeOptions.TouchClickMask==0,"Gesture binding blocks native map click");
+partialTouch.Bindings["leftClick"]=new(0x42,0);Check(partialTouch.RuntimeOptions.TouchClickMask==1,"Unbound side blocked");
+partialTouch.Bindings["rightClick"]=new(0x43,0);Check(partialTouch.RuntimeOptions.TouchClickMask==3,"Both click bindings missing");
+Console.WriteLine("3 partial touch binding scenarios passed");

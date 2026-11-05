@@ -403,7 +403,7 @@ internal sealed partial class MainWindow : Window {
             var state = await BridgeClient.SendAsync(diagnostics ? "getDiagnostics" : "getState");
             if (diagnostics) lastDiagnostics = DateTime.UtcNow;
             if (generation == stateGeneration && !commanding) {
-                if(state.InputOptions!=inputProfile.Options || (state.Effects.Options with {AudioDeviceId=effectOptions.AudioDeviceId})!=effectOptions)profileApplied=false;
+                if(state.InputOptions!=inputProfile.RuntimeOptions || (state.Effects.Options with {AudioDeviceId=effectOptions.AudioDeviceId})!=effectOptions)profileApplied=false;
                 Display(state);
             }
         } catch (Exception) {

@@ -57,7 +57,7 @@
     <StackPanel Grid.Column="2">
      <Border Style="{StaticResource SharedCard}"><StackPanel>
       <Grid Margin="0,0,0,10"><TextBlock Text="Тачпад → клавиши" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/><CheckBox x:Name="TouchBindingsEnabled" Style="{DynamicResource IOSBlueSwitch}" HorizontalAlignment="Right"/></Grid>
-      <CheckBox x:Name="ConsumeTouchpad" Content="Не передавать тачпад игре" Foreground="#BBFFFFFF" FontSize="12" Margin="0,0,0,12"/>
+      <CheckBox x:Name="ConsumeTouchpad" Content="Заменять назначенные нажатия клавишами" ToolTip="Только назначенные левая/правая стороны. Неназначенные нажатия и касания остаются доступны игре." Foreground="#BBFFFFFF" FontSize="12" Margin="0,0,0,12"/>
       <StackPanel x:Name="TouchMappings"/>
       <TextBlock x:Name="CaptureHint" Text="Нажмите назначение, затем клавишу. Можно с Ctrl, Alt или Shift. Backspace — убрать." TextWrapping="Wrap" Foreground="#99FFFFFF" FontSize="11" Margin="0,8,0,0"/>
      </StackPanel></Border>

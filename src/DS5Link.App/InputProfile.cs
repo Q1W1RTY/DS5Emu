@@ -11,6 +11,7 @@ internal sealed record InputOptions {
  public int RightDeadzone {get;init;}
  public bool TouchEnabled {get;init;}
  public bool ConsumeTouchpad {get;init;}=true;
+ public int TouchClickMask {get;init;}=3;
 }
 internal sealed record KeyBinding(int VirtualKey,int Modifiers) {
  public bool Valid => (VirtualKey is >=0x30 and <=0x39 or >=0x41 and <=0x5A or >=0x70 and <=0x7B or 0x20 or 0x0D or 0x1B or 0x09 or >=0x21 and <=0x28 or 0x2D or 0x2E) && (Modifiers&~7)==0;
@@ -21,6 +22,7 @@ internal sealed class InputProfile {
  public InputOptions Options {get;set;}=new();
  public Dictionary<string,KeyBinding> Bindings {get;set;}=new();
  internal static readonly string[] Actions={"leftClick","rightClick","tap","swipeLeft","swipeRight","swipeUp","swipeDown"};
+ internal InputOptions RuntimeOptions=>Options with {TouchClickMask=(Bindings.ContainsKey("leftClick")?1:0)|(Bindings.ContainsKey("rightClick")?2:0)};
  internal bool Valid => SchemaVersion==1 && Options!=null && Options.LeftDeadzone is >=0 and <=30 && Options.RightDeadzone is >=0 and <=30 && Bindings!=null && Bindings.Count<=7 && Bindings.All(p=>Actions.Contains(p.Key) && p.Value!=null && p.Value.Valid) && (!Options.TouchEnabled || Bindings.Count>0);
  internal static InputProfile Load() {
   try {var value=JsonSerializer.Deserialize<InputProfile>(File.ReadAllText(Path.Combine(Settings.DirectoryPath,"input-profile.json")));return value?.Valid==true?value:new();}

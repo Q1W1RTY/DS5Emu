@@ -32,7 +32,7 @@ internal sealed partial class MainWindow {
   if(commanding || exiting || exitRequested)throw new InvalidOperationException("Дождитесь завершения текущей операции.");
   commanding=true;++stateGeneration;KeyboardOutput.ReleaseAll();inputCursor.Reset();Display(current);
   try {
-   var state=await BridgeClient.SetInputOptionsAsync(next.Options);
+   var state=await BridgeClient.SetInputOptionsAsync(next.RuntimeOptions);
    inputProfile=next;keyboardErrorShown=false;Display(state);
    if(next.Options.TouchEnabled)inputTimer.Start();else inputTimer.Stop();
   }finally{commanding=false;Display(current);}
