@@ -6,6 +6,7 @@ using Microsoft.Win32;
 namespace DS5Link;
 internal sealed class Settings {
  public int SchemaVersion {get;set;}=1;
+ public string Language {get;set;}="ru";
  public bool FirstRun {get;set;}=true;
  public static readonly string DirectoryPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"DS5Link");
  public static Settings Load() {

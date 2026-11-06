@@ -10,7 +10,7 @@ internal sealed record GameProfile {
  public string Executable {get;init;}="";
  public InputProfile Input {get;init;}=new();
  public EffectOptions Effects {get;init;}=new();
- public string Label=>Executable.Length==0?"Общие настройки":Path.GetFileNameWithoutExtension(Executable);
+ public string Label=>Executable.Length==0?L.T("Общие настройки"):Path.GetFileNameWithoutExtension(Executable);
  public override string ToString()=>Label;
  internal bool Valid=>Input?.Valid==true && Effects?.Valid==true && (Executable=="" || GameProfiles.ValidExecutable(Executable));
 }
@@ -28,11 +28,11 @@ internal sealed record GameProfiles {
  internal static GameProfiles Load(string path,InputProfile input,EffectOptions effects){
   if(!File.Exists(path))return new(){Default=new(){Input=input,Effects=effects}};
   var result=JsonSerializer.Deserialize<GameProfiles>(File.ReadAllText(path),BridgeClient.JsonOptions);
-  if(result?.Valid!=true)throw new IOException("Файл профилей повреждён или имеет неподдерживаемый формат. Исходный файл сохранён.");
+  if(result?.Valid!=true)throw new IOException(L.T("Файл профилей повреждён или имеет неподдерживаемый формат. Исходный файл сохранён."));
   return result;
  }
  internal void Save(string path){
-  if(!Valid)throw new IOException("Проверьте профили: нужны уникальные полные пути к EXE, не более 128 игр.");
+  if(!Valid)throw new IOException(L.T("Проверьте профили: нужны уникальные полные пути к EXE, не более 128 игр."));
   Directory.CreateDirectory(Path.GetDirectoryName(path)!);
   var temp=path+"."+Guid.NewGuid().ToString("N")+".tmp";
   try{File.WriteAllText(temp,JsonSerializer.Serialize(this,BridgeClient.JsonOptions));File.Move(temp,path,true);}

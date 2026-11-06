@@ -16,9 +16,15 @@
     <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Strings.en.json" WithCulture="false" LogicalName="DS5Link.Strings.en.json" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <Resource Include="Assets\DS5Link.ico" />
     <Resource Include="Assets\DS5Link.Tray.ico" />
     <Resource Include="Assets\DualSense-card.png" />
+    <Resource Include="Assets\Fonts\GolosText-Bold.ttf" />
+    <Resource Include="Assets\Fonts\GolosText-Regular.ttf" />
+    <Resource Include="Assets\Fonts\GolosText-Medium.ttf" />
+    <Resource Include="Assets\Fonts\GolosText-SemiBold.ttf" />
+    <Content Include="Assets\Fonts\GolosText-OFL.txt" Link="licenses\GolosText-OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

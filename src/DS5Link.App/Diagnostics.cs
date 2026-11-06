@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -19,7 +19,7 @@ internal static class Diagnostics {
    var level=structured?parts[2]:"INFO";
    if(level=="DEBUG")continue;
    var scope=structured?parts[1]:"daemon";
-   var category=scope switch {"bluetooth" or "hid"=>"Bluetooth","port" or "usb"=>"Виртуальный контроллер","input-audio" or "output"=>"Звук и эффекты","config"=>"Настройки","control"=>"Управление","input-control"=>"Ввод",_=>"Служба"};
+   var category=scope switch {"bluetooth" or "hid"=>"Bluetooth","port" or "usb"=>L.T("Виртуальный контроллер"),"input-audio" or "output"=>L.T("Звук и эффекты"),"config"=>L.T("Настройки"),"control"=>L.T("Управление"),"input-control"=>L.T("Ввод"),_=>L.T("Служба")};
    var message=Regex.Replace(structured?parts[3]:safe,@"\s+"," ").Trim();
    if(message.Length==0)continue;
    // Keep the original masked detail for tooltips; ZIP export retains all raw lines.

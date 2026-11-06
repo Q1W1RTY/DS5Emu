@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param([ValidateSet('Release','Debug')][string]$Configuration='Release')
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
@@ -8,8 +8,11 @@ if ($LASTEXITCODE) { throw 'Native tests failed' }
 & (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe') run --project (Join-Path $root 'tests\DS5Link.Tests\DS5Link.Tests.csproj') -c $Configuration -p:Platform=AnyCPU
 if($LASTEXITCODE){throw 'Managed protocol and diagnostics tests failed'}
 
-& (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe') run --project (Join-Path $root 'tests\DS5Link.UiTests\DS5Link.UiTests.csproj') -c $Configuration -p:Platform=AnyCPU -- (Join-Path $root 'artifacts\ui-qa')
-if($LASTEXITCODE){throw 'UI layout/state tests failed'}
+& (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe') build (Join-Path $root 'src\DS5Link.Avalonia\DS5Link.Avalonia.csproj') -c $Configuration -p:Platform=AnyCPU
+if($LASTEXITCODE){throw 'Avalonia build failed'}
+$ui=Join-Path $root "src\DS5Link.Avalonia\bin\$Configuration\net10.0-windows\win-x64\DS5Link.exe"
+$process=Start-Process $ui -ArgumentList '--ui-qa' -PassThru -Wait
+if($process.ExitCode -ne 0){throw 'Avalonia layout/state tests failed'}
 
 & (Join-Path $PSScriptRoot "test-dependencies.ps1")
 

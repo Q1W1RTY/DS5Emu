@@ -5,18 +5,19 @@ namespace DS5Link;
 internal sealed partial class MainWindow {
  internal Forms.ContextMenuStrip CreateTrayMenu(){
   var menu=new Forms.ContextMenuStrip {Renderer=new TrayMenuRenderer(),BackColor=Color.FromArgb(24,24,27),ForeColor=Color.FromArgb(240,241,243),Font=new Font("Segoe UI",9),ShowImageMargin=false,ShowCheckMargin=true,Padding=new Forms.Padding(5),DropShadowEnabled=false};
-  menu.Items.Add("Открыть DS5Link",null,(_,_)=>Open());
-  menu.Items.Add("Настройки контроллера",null,(_,_)=>{Open();OpenInputSettings();});
+  menu.Items.Add(L.T("Открыть DS5Link"),null,(_,_)=>Open());
+  menu.Items.Add(L.T("Настройки контроллера"),null,(_,_)=>{Open();OpenInputSettings();});
   menu.Items.Add(new Forms.ToolStripSeparator());
-  menu.Items.Add("Включить / выключить эмуляцию",null,async(_,_)=>await Command(current.Enabled?"pause":"enable"));
-  menu.Items.Add("Переподключить",null,async(_,_)=>await Command("reconnect"));
-  menu.Items.Add("Отключить геймпад",null,async(_,_)=>await Command("disconnect"));
-  startupMenu=new Forms.ToolStripMenuItem("Автозапуск"){Checked=StartupSwitch.IsChecked==true,CheckOnClick=true};
+  menu.Items.Add(L.T("Включить / выключить эмуляцию"),null,async(_,_)=>await Command(current.Enabled?"pause":"enable"));
+  menu.Items.Add(L.T("Переподключить"),null,async(_,_)=>await Command("reconnect"));
+  menu.Items.Add(L.T("Отключить геймпад"),null,async(_,_)=>await Command("disconnect"));
+  startupMenu=new Forms.ToolStripMenuItem(L.T("Автозапуск")){Checked=StartupSwitch.IsChecked==true,CheckOnClick=true};
   startupMenu.CheckedChanged+=(_,_)=>ChangeStartup(startupMenu.Checked);menu.Items.Add(startupMenu);
-  menu.Items.Add("Диагностика",null,(_,_)=>{Open();SetDiagnosticsOpen(true);});
-  menu.Items.Add("Сохранить диагностику",null,async(_,_)=>await ExportDiagnostics());
+  menu.Items.Add(L.T("Диагностика"),null,(_,_)=>{Open();SetDiagnosticsOpen(true);});
+  menu.Items.Add(L.T("Сохранить диагностику"),null,async(_,_)=>await ExportDiagnostics());
+  menu.Items.Add("RU / EN",null,async(_,_)=>await ChangeLanguage(L.Language=="ru"?"en":"ru"));
   menu.Items.Add(new Forms.ToolStripSeparator());
-  menu.Items.Add("Выход",null,async(_,_)=>await Exit());
+  menu.Items.Add(L.T("Выход"),null,async(_,_)=>await Exit());
   foreach(Forms.ToolStripItem item in menu.Items){item.ForeColor=menu.ForeColor;if(item is not Forms.ToolStripSeparator)item.Padding=new Forms.Padding(6,5,12,5);}
   return menu;
  }

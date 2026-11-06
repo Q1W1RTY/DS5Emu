@@ -171,3 +171,23 @@ Check(partialTouch.RuntimeOptions.TouchClickMask==0,"Gesture binding blocks nati
 partialTouch.Bindings["leftClick"]=new(0x42,0);Check(partialTouch.RuntimeOptions.TouchClickMask==1,"Unbound side blocked");
 partialTouch.Bindings["rightClick"]=new(0x43,0);Check(partialTouch.RuntimeOptions.TouchClickMask==3,"Both click bindings missing");
 Console.WriteLine("3 partial touch binding scenarios passed");
+
+L.SetLanguage("en");
+Check(L.T("Настройки контроллера")=="Controller settings","English catalog missing");
+Check(L.F("Вход {0:F1}% · haptics {1}%",12.5,25)=="Input 12.5% · haptics 25%","Localized interpolation corrupted");
+Check(L.ByKey(L.Key("Общие настройки"))=="General settings","XAML language key differs");
+Check(InputSettingsWindow.Labels[0]=="Left click","Language switch retained cached Russian labels");
+Check(L.HasPrefix("Нет связи со службой","Нет связи") && L.HasPrefix("Disconnected","Нет связи") && L.HasPrefix("Cannot reach the service. Check the DS5Link installation.","Нет связи"),"Localized error classification failed");
+var languageSettings=JsonSerializer.Deserialize<Settings>("{\"SchemaVersion\":1,\"FirstRun\":false,\"Language\":\"en\"}")!;
+Check(languageSettings.Language=="en" && !languageSettings.FirstRun,"Language preference broke existing settings");
+using(var languageStream=typeof(L).Assembly.GetManifestResourceStream("DS5Link.Strings.en.json")!){
+ var catalog=JsonSerializer.Deserialize<Dictionary<string,string>>(languageStream)!;
+ foreach(var entry in catalog){
+  Check(!string.IsNullOrWhiteSpace(entry.Value),"Empty English translation");
+  var original=System.Text.RegularExpressions.Regex.Matches(entry.Key,@"\{\d+[^}]*\}").Select(m=>m.Value).Order().ToArray();
+  var translated=System.Text.RegularExpressions.Regex.Matches(entry.Value,@"\{\d+[^}]*\}").Select(m=>m.Value).Order().ToArray();
+  Check(original.SequenceEqual(translated),"Translation changed placeholders: "+entry.Key);
+ }
+}
+L.SetLanguage("invalid");Check(L.Language=="ru" && L.T("Настройки контроллера")=="Настройки контроллера" && InputSettingsWindow.Labels[0]=="Нажатие слева","Russian fallback or reverse switch failed");
+Console.WriteLine("Language catalog, formatting, settings and reverse-switch checks passed");

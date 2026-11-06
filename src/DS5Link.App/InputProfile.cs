@@ -29,7 +29,7 @@ internal sealed class InputProfile {
   catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException){return new();}
  }
  internal void Save() {
-  if(!Valid)throw new IOException("Проверьте назначения и мёртвые зоны. Для тачпада нужно хотя бы одно назначение.");
+  if(!Valid)throw new IOException(L.T("Проверьте назначения и мёртвые зоны. Для тачпада нужно хотя бы одно назначение."));
   Directory.CreateDirectory(Settings.DirectoryPath);var path=Path.Combine(Settings.DirectoryPath,"input-profile.json");
   File.WriteAllText(path+".tmp",JsonSerializer.Serialize(this,BridgeClient.JsonOptions));File.Move(path+".tmp",path,true);
  }

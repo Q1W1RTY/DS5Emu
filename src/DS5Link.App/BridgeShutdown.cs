@@ -10,8 +10,8 @@ internal static class BridgeShutdown {
    var state=await send("pause");
    var deadline=DateTime.UtcNow+(wait??TimeSpan.FromSeconds(10));
    while(state.State!="Paused") {
-    if(state.State=="Error")throw new IOException(string.IsNullOrWhiteSpace(state.Error)?"Служба не подтвердила освобождение контроллера.":state.Error);
-    if(DateTime.UtcNow>=deadline)throw new TimeoutException("Служба не подтвердила освобождение контроллера.");
+    if(state.State=="Error")throw new IOException(string.IsNullOrWhiteSpace(state.Error)?L.T("Служба не подтвердила освобождение контроллера."):state.Error);
+    if(DateTime.UtcNow>=deadline)throw new TimeoutException(L.T("Служба не подтвердила освобождение контроллера."));
     await Task.Delay(100);
     state=await send("getState");
    }

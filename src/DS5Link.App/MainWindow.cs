@@ -47,19 +47,21 @@ internal sealed partial class MainWindow : Window {
     public MainWindow(bool preview) {
         this.preview = preview;
         InitializeComponent();
+
+        UpdateLanguageButton();
         InitializeInputControls();
         InitializeEffects();
         InitializeGameProfiles();
         VersionText.Text = "v" + typeof(MainWindow).Assembly.GetName().Version?.ToString(3);
         MaxHeight = SystemParameters.WorkArea.Height;
 
-        AddMetric(ConnectionMetrics, "Пакеты / с");
-        AddMetric(ConnectionMetrics, "Паузы > 10 мс");
-        AddMetric(ConnectionMetrics, "Макс. пауза");
-        AddMetric(ConnectionMetrics, "Окно наблюдения");
-        AddMetric(AudioMetrics, "Игровое аудио");
-        AddMetric(AudioMetrics, "Микрофон");
-        AddMetric(AudioMetrics, "Наушники");
+        AddMetric(ConnectionMetrics, L.T("Пакеты / с"));
+        AddMetric(ConnectionMetrics, L.T("Паузы > 10 мс"));
+        AddMetric(ConnectionMetrics, L.T("Макс. пауза"));
+        AddMetric(ConnectionMetrics, L.T("Окно наблюдения"));
+        AddMetric(AudioMetrics, L.T("Игровое аудио"));
+        AddMetric(AudioMetrics, L.T("Микрофон"));
+        AddMetric(AudioMetrics, L.T("Наушники"));
         AddMetric(AudioMetrics, "RSSI");
 
         SourceInitialized += (_, _) => {
@@ -95,7 +97,7 @@ internal sealed partial class MainWindow : Window {
         StartupSwitch.Checked += (_, _) => ChangeStartup(true);
         StartupSwitch.Unchecked += (_, _) => ChangeStartup(false);
 
-        tray = new Forms.NotifyIcon { Visible = true, Icon = MakeIcon("Waiting"), Text = "DS5Link · ожидание" };
+        tray = new Forms.NotifyIcon { Visible = true, Icon = MakeIcon("Waiting"), Text = L.T("DS5Link · ожидание") };
         tray.DoubleClick += (_, _) => Open();
 
         tray.ContextMenuStrip = CreateTrayMenu();
@@ -123,14 +125,14 @@ internal sealed partial class MainWindow : Window {
         inputSettingsWindow?.SetEffectState(state.Effects,audioEffects.Error,audioEffects.Level,audioEffects.SignalPeak,audioEffects.SourceName,state.Mode=="xbox");
 
         var name = state.State switch {
-            "Active" => "Подключён",
-            "Paused" => state.BluetoothDisconnected ? "Отключён" : "Приостановлено",
-            "Wired" => "Кабель USB",
-            "Conflict" => "Занят DSX",
-            "Stopping" => "Отключение…",
-            "Connecting" => "Подключение…",
-            "Error" => state.Error.StartsWith("Нет связи со службой") ? "Нет связи" : "Ошибка",
-            _ => "Ожидание"
+            "Active" => L.T("Подключён"),
+            "Paused" => state.BluetoothDisconnected ? L.T("Отключён") : L.T("Приостановлено"),
+            "Wired" => L.T("Кабель USB"),
+            "Conflict" => L.T("Занят DSX"),
+            "Stopping" => L.T("Отключение…"),
+            "Connecting" => L.T("Подключение…"),
+            "Error" => L.HasPrefix(state.Error,"Нет связи со службой") ? L.T("Нет связи") : L.T("Ошибка"),
+            _ => L.T("Ожидание")
         };
 
         var dotBrush = state.State switch {
@@ -143,20 +145,20 @@ internal sealed partial class MainWindow : Window {
         StatusDot.Fill = dotBrush;
         BadgeText.Text = state.State switch {
             "Active" => state.Transport == "USB" ? "USB" : "Bluetooth",
-            "Connecting" => "Подключение…",
+            "Connecting" => L.T("Подключение…"),
             "Wired" => "USB",
-            "Conflict" => "Занят DSX",
-            "Stopping" => "Отключение…",
-            "Error" => state.Error.StartsWith("Нет связи") ? "Нет связи" : "Сбой",
-            _ => state.BluetoothDisconnected ? "Отключён" : "Ожидание"
+            "Conflict" => L.T("Занят DSX"),
+            "Stopping" => L.T("Отключение…"),
+            "Error" => L.HasPrefix(state.Error,"Нет связи") ? L.T("Нет связи") : L.T("Сбой"),
+            _ => state.BluetoothDisconnected ? L.T("Отключён") : L.T("Ожидание")
         };
 
         ConnectionText.Text = state.State is "Active" or "Wired" ? state.Transport : "—";
-        SignalText.Text = state.State != "Active" ? "—" : state.Rssi is int rssi ? $"{rssi} dBm" : "Нет данных";
+        SignalText.Text = state.State != "Active" ? "—" : state.Rssi is int rssi ? $"{rssi} dBm" : L.T("Нет данных");
 
         // Battery Widget
         BatteryText.Text = state.BatteryPercent is int battery ? $"{battery}%" : "—";
-        BatteryText.ToolTip = "Приблизительный уровень по данным контроллера";
+        BatteryText.ToolTip = L.T("Приблизительный уровень по данным контроллера");
         var charge = Math.Clamp(state.BatteryPercent ?? 0, 0, 100);
         BatteryFilled.Width = new GridLength(charge, GridUnitType.Star);
         BatteryEmpty.Width = new GridLength(100 - charge, GridUnitType.Star);
@@ -164,10 +166,10 @@ internal sealed partial class MainWindow : Window {
 
         BatteryBolt.Visibility = state.Charging ? Visibility.Visible : Visibility.Collapsed;
         if (state.Charging) {
-            BatterySubtext.Text = "Заряжается";
+            BatterySubtext.Text = L.T("Заряжается");
             BatterySubtext.Foreground = GreenBrush;
         } else if (state.BatteryPercent != null) {
-            BatterySubtext.Text = "От батареи";
+            BatterySubtext.Text = L.T("От батареи");
             BatterySubtext.Foreground = MutedBrush;
         } else {
             BatterySubtext.Text = "";
@@ -182,19 +184,19 @@ internal sealed partial class MainWindow : Window {
             EmuBadgeGlow.Color = Color.FromRgb(10, 132, 255);
             EmuBadgeGlow.Opacity = 0.4;
             EmuTitle.Text = state.State switch {
-                "Active" => "Эмуляция включена",
-                "Wired" or "Conflict" => "Эмуляция приостановлена",
-                "Error" => "Эмуляция недоступна",
-                "Connecting" or "Stopping" => "Переключение эмуляции…",
-                _ => "Ожидание контроллера"
+                "Active" => L.T("Эмуляция включена"),
+                "Wired" or "Conflict" => L.T("Эмуляция приостановлена"),
+                "Error" => L.T("Эмуляция недоступна"),
+                "Connecting" or "Stopping" => L.T("Переключение эмуляции…"),
+                _ => L.T("Ожидание контроллера")
             };
-            ToggleButton.Content = "Выключить эмуляцию";
+            ToggleButton.Content = L.T("Выключить эмуляцию");
             SetSegmentSelection(state.Mode == "xbox" ? 2 : 1);
         } else {
             EmuBadge.Background = new SolidColorBrush(Color.FromArgb(35, 255, 255, 255));
             EmuBadgeGlow.Opacity = 0;
-            EmuTitle.Text = "Эмуляция выключена";
-            ToggleButton.Content = "Включить эмуляцию";
+            EmuTitle.Text = L.T("Эмуляция выключена");
+            ToggleButton.Content = L.T("Включить эмуляцию");
             SetSegmentSelection(0);
         }
 
@@ -206,14 +208,14 @@ internal sealed partial class MainWindow : Window {
         DisconnectButton.IsEnabled = !commanding && !exitRequested && !state.BluetoothDisconnected && !state.UsbConnected && state.State is not ("Wired" or "Conflict" or "Stopping" or "Error");
 
         // Diagnostics
-        metrics["Пакеты / с"].Text = state.PacketsPerSecond.ToString("F1");
-        metrics["Паузы > 10 мс"].Text = state.GapsOver10ms.ToString();
-        metrics["Макс. пауза"].Text = $"{state.MaxGapMs:F1} мс";
-        metrics["Окно наблюдения"].Text = $"{state.ObservedSeconds:F0} с";
-        metrics["Игровое аудио"].Text = state.AudioActive ? "есть поток" : "нет потока";
-        metrics["Микрофон"].Text = state.Muted ? "mute" : state.MicrophoneActive ? "есть поток" : "нет потока";
-        metrics["Наушники"].Text = state.State == "Active" ? (state.Headphones ? "подключены" : "не подключены") : "—";
-        metrics["RSSI"].Text = state.Rssi is int signal ? $"{signal} dBm" : "недоступен";
+        metrics[L.T("Пакеты / с")].Text = state.PacketsPerSecond.ToString("F1");
+        metrics[L.T("Паузы > 10 мс")].Text = state.GapsOver10ms.ToString();
+        metrics[L.T("Макс. пауза")].Text = L.F("{0:F1} мс",state.MaxGapMs);
+        metrics[L.T("Окно наблюдения")].Text = L.F("{0:F0} с",state.ObservedSeconds);
+        metrics[L.T("Игровое аудио")].Text = state.AudioActive ? L.T("есть поток") : L.T("нет потока");
+        metrics[L.T("Микрофон")].Text = state.Muted ? "mute" : state.MicrophoneActive ? L.T("есть поток") : L.T("нет потока");
+        metrics[L.T("Наушники")].Text = state.State == "Active" ? (state.Headphones ? L.T("подключены") : L.T("не подключены")) : "—";
+        metrics["RSSI"].Text = state.Rssi is int signal ? $"{signal} dBm" : L.T("недоступен");
 
         DiagnosticError.Text = Diagnostics.Mask(state.Error);
         DiagnosticError.Visibility = string.IsNullOrEmpty(state.Error) ? Visibility.Collapsed : Visibility.Visible;
@@ -226,7 +228,7 @@ internal sealed partial class MainWindow : Window {
                 EventList.ItemsSource = events;
                 EventsEmpty.Visibility = events.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             }
-            DiagnosticsUpdated.Text = "Обновлено " + DateTime.Now.ToString("HH:mm:ss");
+            DiagnosticsUpdated.Text = L.T("Обновлено ") + DateTime.Now.ToString("HH:mm:ss");
         }
 
         if (tray != null) {
@@ -240,7 +242,7 @@ internal sealed partial class MainWindow : Window {
             if (state.BatteryPercent is > 30 || state.Charging) lowBatteryNotified = false;
             if (state.BatteryPercent is <= 20 && !state.Charging && !lowBatteryNotified) {
                 lowBatteryNotified = true;
-                Notify("Низкий заряд DualSense", $"Осталось приблизительно {state.BatteryPercent}%.");
+                Notify(L.T("Низкий заряд DualSense"), L.F("Осталось приблизительно {0}%.",state.BatteryPercent));
             }
             if (state.State == "Error" && state.Error != notifiedError) {
                 notifiedError = state.Error;
@@ -255,7 +257,7 @@ internal sealed partial class MainWindow : Window {
         SegmentXInput.Style = (Style)FindResource(index == 2 ? "SegmentButtonActive" : "SegmentButton");
         SegmentOff.IsEnabled = SegmentXInput.IsEnabled = !commanding && !exitRequested && current.State != "Stopping";
         SegmentPS5.IsEnabled = SegmentXInput.IsEnabled && !current.UsbConnected;
-        SegmentPS5.ToolTip = current.UsbConnected ? "По USB DualSense уже работает как PS5. Для эмуляции выберите Xbox." : null;
+        SegmentPS5.ToolTip = current.UsbConnected ? L.T("По USB DualSense уже работает как PS5. Для эмуляции выберите Xbox.") : null;
     }
 
     internal void SetDiagnosticsOpen(bool open) {
@@ -281,12 +283,12 @@ internal sealed partial class MainWindow : Window {
             Settings.AutoStart = enabled;
             StartupSwitch.IsChecked = enabled;
             if (startupMenu != null) startupMenu.Checked = enabled;
-            SetFooterMessage(enabled ? "Автозапуск с Windows включён" : "Автозапуск отключён");
+            SetFooterMessage(enabled ? L.T("Автозапуск с Windows включён") : L.T("Автозапуск отключён"));
         } catch (Exception e) {
             var actual = Settings.AutoStart;
             StartupSwitch.IsChecked = actual;
             if (startupMenu != null) startupMenu.Checked = actual;
-            Notice("Не удалось изменить автозапуск: " + e.Message);
+            Notice(L.T("Не удалось изменить автозапуск: ") + e.Message);
         } finally {
             syncingStartup = false;
         }
@@ -295,17 +297,18 @@ internal sealed partial class MainWindow : Window {
     internal static bool NeedsHidHideRepair(string error) => error.Contains("HidHide inverse mode is incompatible", StringComparison.OrdinalIgnoreCase);
 
     static string FriendlyError(string message) {
-        if (message.Contains("Enabling HidHide would affect")) return "В HidHide настроены другие устройства. Подробности в диагностике.";
-        if (message.Contains("HIDHIDE_ACCESS_DENIED") || message.Contains("HidHideCLI failed with exit code 5")) return "HidHide недоступен. Закройте HidHide Configuration Client и повторите включение.";
-        if (message.Contains("inverse mode")) return "В HidHide включён обратный режим. Нажмите «Исправить HidHide».";
-        if (message.Contains("HidHide recovery pending")) return "Закройте окно настройки HidHide и нажмите «Восстановить HidHide» в диагностике.";
-        if (message.Contains("recovery deferred")) return "Проверьте восстановление в диагностике.";
-        if (message.Contains("ViGEmBus")) return "Для Xbox нужен ViGEmBus. Установите его через установщик DS5Link.";
-        if (message == "BRIDGE_PAUSED") return "Сначала включите эмуляцию.";
-        if (message == "BLUETOOTH_DISCONNECT_PENDING") return "Дождитесь отключения Bluetooth.";
-        if (message == "CONTROLLER_BUSY") return "Контроллер подключён по USB или используется DSX.";
-        if (message == "CONTROLLER_NOT_CONFIGURED") return "Сначала подключите один DualSense по Bluetooth.";
-        return Regex.IsMatch(message, "[А-Яа-я]") ? message : "Сбой подключения. Подробности в диагностике.";
+        if(L.IsTranslated(message))return message;
+        if (message.Contains("Enabling HidHide would affect")) return L.T("В HidHide настроены другие устройства. Подробности в диагностике.");
+        if (message.Contains("HIDHIDE_ACCESS_DENIED") || message.Contains("HidHideCLI failed with exit code 5")) return L.T("HidHide недоступен. Закройте HidHide Configuration Client и повторите включение.");
+        if (message.Contains("inverse mode")) return L.T("В HidHide включён обратный режим. Нажмите «Исправить HidHide».");
+        if (message.Contains("HidHide recovery pending")) return L.T("Закройте окно настройки HidHide и нажмите «Восстановить HidHide» в диагностике.");
+        if (message.Contains("recovery deferred")) return L.T("Проверьте восстановление в диагностике.");
+        if (message.Contains("ViGEmBus")) return L.T("Для Xbox нужен ViGEmBus. Установите его через установщик DS5Link.");
+        if (message == "BRIDGE_PAUSED") return L.T("Сначала включите эмуляцию.");
+        if (message == "BLUETOOTH_DISCONNECT_PENDING") return L.T("Дождитесь отключения Bluetooth.");
+        if (message == "CONTROLLER_BUSY") return L.T("Контроллер подключён по USB или используется DSX.");
+        if (message == "CONTROLLER_NOT_CONFIGURED") return L.T("Сначала подключите один DualSense по Bluetooth.");
+        return Regex.IsMatch(message, "[А-Яа-я]") ? L.T(message) : L.T("Сбой подключения. Подробности в диагностике.");
     }
 
     internal static Icon MakeIcon(string state) {
@@ -410,7 +413,7 @@ internal sealed partial class MainWindow : Window {
             if (generation == stateGeneration && !commanding)
                 Display(current with {
                     State = "Error",
-                    Error = "Нет связи со службой. Ожидаем автоматическое восстановление…",
+                    Error = L.T("Нет связи со службой. Ожидаем автоматическое восстановление…"),
                     BatteryPercent = null,
                     Charging = false,
                     Rssi = null,
@@ -452,8 +455,8 @@ internal sealed partial class MainWindow : Window {
         try {
             var result = await BridgeShutdown.AttemptAsync(command => BridgeClient.SendAsync(command), ServiceState.StoppedOrMissing);
             if (!result.Released && System.Windows.MessageBox.Show(this,
-                "Не удалось подтвердить остановку эмуляции. Закрыть только интерфейс?\n\nСлужба DS5Link может продолжить работу. Состояние контроллера не подтверждено.\n\n" + result.Error,
-                "Выход из DS5Link", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+                L.T("Не удалось подтвердить остановку эмуляции. Закрыть только интерфейс?\n\nСлужба DS5Link может продолжить работу. Состояние контроллера не подтверждено.\n\n") + result.Error,
+                L.T("Выход из DS5Link"), MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
             exiting = true;
             profileTimer.Stop();
             effectTimer.Stop();
@@ -476,20 +479,20 @@ internal sealed partial class MainWindow : Window {
         exporting = true;
         ExportButton.IsEnabled = false;
         try {
-            ExportButton.Content = "Собираем…";
+            ExportButton.Content = L.T("Собираем…");
             var folder = Path.Combine(Settings.DirectoryPath, "Diagnostics");
             Directory.CreateDirectory(folder);
             var path = Path.Combine(folder, "DS5Link-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + ".zip");
             await DiagnosticArchive.SaveAsync(path, current with { LogLines = diagnosticLines },
                 () => BridgeClient.SendAsync("getDiagnostics"));
-            Notice("Сохранено: " + Path.GetFileName(path));
-            SetFooterMessage("Диагностика сохранена");
+            Notice(L.T("Сохранено: ") + Path.GetFileName(path));
+            SetFooterMessage(L.T("Диагностика сохранена"));
         } catch (Exception e) {
-            Notice("Не удалось сохранить диагностику: " + e.Message);
+            Notice(L.T("Не удалось сохранить диагностику: ") + e.Message);
         } finally {
             exporting = false;
             ExportButton.IsEnabled = true;
-            ExportButton.Content = "Сохранить ZIP";
+            ExportButton.Content = L.T("Сохранить ZIP");
         }
     }
 
@@ -522,20 +525,20 @@ internal sealed partial class MainWindow : Window {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         ReconnectRotation.BeginAnimation(RotateTransform.AngleProperty, anim);
-        SetFooterMessage("Переподключение Bluetooth...");
+        SetFooterMessage(L.T("Переподключение Bluetooth..."));
         await Command("reconnect");
     }
 
     async void DisconnectController(object sender, RoutedEventArgs e) {
-        SetFooterMessage("Геймпад отключён");
+        SetFooterMessage(L.T("Геймпад отключён"));
         await Command("disconnect");
     }
 
     async void FixHidHide(object sender, RoutedEventArgs e) {
         if (commanding || exiting || exitRequested || !NeedsHidHideRepair(current.Error)) return;
         if (System.Windows.MessageBox.Show(this,
-            "Для DS5Link нужен обычный режим HidHide. Отключить обратный режим?\n\nЭто общая настройка для всех программ. Списки устройств и приложений сохранятся. Другим программам эмуляции может потребоваться переподключение.",
-            "Исправить HidHide", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            L.T("Для DS5Link нужен обычный режим HidHide. Отключить обратный режим?\n\nЭто общая настройка для всех программ. Списки устройств и приложений сохранятся. Другим программам эмуляции может потребоваться переподключение."),
+            L.T("Исправить HidHide"), MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         bool repaired = false;
         var resume = current.Enabled;
         var mode = current.Mode;
@@ -551,14 +554,14 @@ internal sealed partial class MainWindow : Window {
                 await Task.Delay(100);
                 Display(await BridgeClient.SendAsync("getState"));
             }
-            if (current.State != "Paused") throw new IOException("Сначала нужно завершить освобождение контроллера и восстановление HidHide.");
+            if (current.State != "Paused") throw new IOException(L.T("Сначала нужно завершить освобождение контроллера и восстановление HidHide."));
             Display(await BridgeClient.SendAsync("normalizeHidHide"));
             repaired = true;
             if (resume) Display(await BridgeClient.SendAsync(mode == "xbox" ? "enableXbox" : "enablePS5"));
-            SetFooterMessage("HidHide исправлен");
+            SetFooterMessage(L.T("HidHide исправлен"));
         } catch (Exception error) {
             Display(current with { State = "Error", Error = error.Message });
-            Notice((repaired ? "HidHide исправлен, но эмуляция не включилась: " : "Не удалось исправить HidHide: ") + error.Message);
+            Notice((repaired ? L.T("HidHide исправлен, но эмуляция не включилась: ") : L.T("Не удалось исправить HidHide: ")) + error.Message);
         } finally {
             commanding = false;
             Display(current);
@@ -567,7 +570,7 @@ internal sealed partial class MainWindow : Window {
 
     async void RecoverController(object sender, RoutedEventArgs e) => await Command("recover");
     async void SelectController(object sender, RoutedEventArgs e) {
-        if (System.Windows.MessageBox.Show("Сначала выключите эмуляцию и подключите только тот DualSense, который хотите использовать. Сохранить его вместо прежнего?", "Сменить контроллер", MessageBoxButton.YesNo) == MessageBoxResult.Yes) await Command("selectController");
+        if (System.Windows.MessageBox.Show(L.T("Сначала выключите эмуляцию и подключите только тот DualSense, который хотите использовать. Сохранить его вместо прежнего?"), L.T("Сменить контроллер"), MessageBoxButton.YesNo) == MessageBoxResult.Yes) await Command("selectController");
     }
     void ToggleAdvanced(object sender, RoutedEventArgs e) => SetDiagnosticsOpen(!diagnosticsOpen);
     async void SaveDiagnostics(object sender, RoutedEventArgs e) => await ExportDiagnostics();

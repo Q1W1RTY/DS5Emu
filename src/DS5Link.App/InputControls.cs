@@ -29,7 +29,7 @@ internal sealed partial class MainWindow {
   inputSettingsWindow.Show();
  }
  async Task ApplyInputSettings(InputProfile next) {
-  if(commanding || exiting || exitRequested)throw new InvalidOperationException("Дождитесь завершения текущей операции.");
+  if(commanding || exiting || exitRequested)throw new InvalidOperationException(L.T("Дождитесь завершения текущей операции."));
   commanding=true;++stateGeneration;KeyboardOutput.ReleaseAll();inputCursor.Reset();Display(current);
   try {
    var state=await BridgeClient.SetInputOptionsAsync(next.RuntimeOptions);
@@ -47,7 +47,7 @@ internal sealed partial class MainWindow {
    var received=Stopwatch.StartNew();
    foreach(var action in inputCursor.Read(batch).TakeLast(4)){
     if(generation!=stateGeneration || !ProfileAllowsKeyboard() || commanding || exiting || exitRequested || IsActive || inputSettingsWindow?.IsActive==true || action.AgeMs+received.ElapsedMilliseconds>150)continue;
-    if(inputProfile.Bindings.TryGetValue(action.Action,out var binding) && !await KeyboardOutput.SendAsync(binding) && !keyboardErrorShown){keyboardErrorShown=true;Notice("Windows не приняла назначение тачпада. Проверьте права приложения и игры.");}
+    if(inputProfile.Bindings.TryGetValue(action.Action,out var binding) && !await KeyboardOutput.SendAsync(binding) && !keyboardErrorShown){keyboardErrorShown=true;Notice(L.T("Windows не приняла назначение тачпада. Проверьте права приложения и игры."));}
    }
   }catch(Exception){inputCursor.Reset();KeyboardOutput.ReleaseAll();}
   finally{inputPolling=false;}

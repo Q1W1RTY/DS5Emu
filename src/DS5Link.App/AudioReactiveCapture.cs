@@ -21,7 +21,7 @@ internal sealed class AudioWaveform {
   return double.IsFinite(value)?Math.Clamp(value,-1,1):0;
  }
  internal HapticFrame[] Process(ReadOnlySpan<byte> data,int sampleRate,int channels,int bits,bool floating,EffectOptions options,long tick){
-  if(sampleRate<8000 || sampleRate>384000 || channels is <1 or >32 || bits is not(16 or 24 or 32) || floating && bits!=32)throw new IOException("Неподдерживаемый формат звука.");
+  if(sampleRate<8000 || sampleRate>384000 || channels is <1 or >32 || bits is not(16 or 24 or 32) || floating && bits!=32)throw new IOException(L.T("Неподдерживаемый формат звука."));
   if(rate!=sampleRate){Reset();rate=sampleRate;}
   int bytes=bits/8,frames=data.Length/(channels*bytes);if(frames==0){RawPeak=0;Level=0;return Array.Empty<HapticFrame>();}
   var output=new List<HapticFrame>();double peak=0,sum=0,outputPeak=0;
@@ -67,7 +67,7 @@ internal sealed class AudioReactiveCapture:IDisposable {
  internal int Level {get{lock(sync)return Fresh?waveform.Level:0;}}
  internal long SampleTick=>Environment.TickCount64;
  internal HapticFrame[] TakeFrames(){lock(sync){var now=Environment.TickCount64;while(frames.Count>0 && now-frames.Peek().Tick>=80)frames.Dequeue();var result=frames.Take(4).ToArray();for(int i=0;i<result.Length;i++)frames.Dequeue();return result;}}
- internal static AudioOutputDevice[] Devices(){using var e=new MMDeviceEnumerator();var list=new List<AudioOutputDevice>{new("","Устройство вывода Windows")};foreach(var d in e.EnumerateAudioEndPoints(DataFlow.Render,DeviceState.Active)){using(d)list.Add(new(d.ID,d.FriendlyName));}return list.ToArray();}
+ internal static AudioOutputDevice[] Devices(){using var e=new MMDeviceEnumerator();var list=new List<AudioOutputDevice>{new("",L.T("Устройство вывода Windows"))};foreach(var d in e.EnumerateAudioEndPoints(DataFlow.Render,DeviceState.Active)){using(d)list.Add(new(d.ID,d.FriendlyName));}return list.ToArray();}
  internal void UpdateOptions(EffectOptions value){lock(sync)options=value;}
  internal void Start(EffectOptions value){
   Stop();lock(sync){options=value;error="";}if(!value.AudioEnabled)return;

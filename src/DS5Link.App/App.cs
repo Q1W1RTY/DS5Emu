@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Principal;
@@ -11,6 +11,7 @@ namespace DS5Link;
 internal static class App {
  [STAThread]
  public static void Main(string[] args) {
+  L.SetLanguage(Settings.Load().Language);
   var app=new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};
   if(args.Length==2 && args[0]=="--render-icon-preview") {
    Directory.CreateDirectory(args[1]);
@@ -25,7 +26,7 @@ internal static class App {
    bool advanced=Array.IndexOf(args,"--advanced")>=0;
    bool disconnected=Array.IndexOf(args,"--disconnected")>=0;
    string state=Array.IndexOf(args,"--paused")>=0||disconnected?"Paused":Array.IndexOf(args,"--error")>=0?"Error":"Active";
-   preview.Display(new BridgeState {State=state,Enabled=state!="Paused",BluetoothDisconnected=disconnected,BatteryPercent=state=="Active"?85:null,Charging=state=="Active",PacketsPerSecond=state=="Active"?598.4:0,GapsOver10ms=8,MaxGapMs=1.2,ObservedSeconds=60,AudioActive=true,Error=state=="Error"?"Нет связи со службой. Проверьте установку DS5Link.":"",LogLines=new[]{"2026-11-02T18:41:58.000+03:00|daemon|INFO|Служба подключена", "2026-11-02T18:42:00.000+03:00|bluetooth|INFO|DualSense подключён по Bluetooth", "2026-11-02T18:42:01.000+03:00|port|INFO|Виртуальный контроллер готов к игре"}});
+   preview.Display(new BridgeState {State=state,Enabled=state!="Paused",BluetoothDisconnected=disconnected,BatteryPercent=state=="Active"?85:null,Charging=state=="Active",PacketsPerSecond=state=="Active"?598.4:0,GapsOver10ms=8,MaxGapMs=1.2,ObservedSeconds=60,AudioActive=true,Error=state=="Error"?L.T("Нет связи со службой. Проверьте установку DS5Link."):"",LogLines=new[]{"2026-11-02T18:41:58.000+03:00|daemon|INFO|Служба подключена", "2026-11-02T18:42:00.000+03:00|bluetooth|INFO|DualSense подключён по Bluetooth", "2026-11-02T18:42:01.000+03:00|port|INFO|Виртуальный контроллер готов к игре"}});
    preview.SetDiagnosticsOpen(advanced);
    int width=388;
    var content=(FrameworkElement)preview.Content;content.Measure(new Size(width,double.PositiveInfinity));
@@ -42,7 +43,7 @@ internal static class App {
   var settings=Settings.Load();bool show=settings.FirstRun || Array.IndexOf(args,"--show")>=0;
   settings.FirstRun=false;settings.Save();
   if(show)window.Show();
-  var registration=ThreadPool.RegisterWaitForSingleObject(activate,(_,_)=>app.Dispatcher.BeginInvoke(window.Open),null,Timeout.Infinite,false);
+  var registration=ThreadPool.RegisterWaitForSingleObject(activate,(_,_)=>app.Dispatcher.BeginInvoke(new Action(()=>((MainWindow)app.MainWindow).Open())),null,Timeout.Infinite,false);
   app.Run();
   registration.Unregister(null);
  }

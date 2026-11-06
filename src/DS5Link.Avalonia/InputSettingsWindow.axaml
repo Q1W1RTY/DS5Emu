@@ -1,0 +1,960 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Window xmlns="https://github.com/avaloniaui" xmlns:local="clr-namespace:DS5Link" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="DS5Link.InputSettingsWindow" Title="{local:Tr Key=d97b91225d47}" Icon="avares://DS5Link/Assets/DS5Link.ico" Width="1120" Height="840" WindowStartupLocation="CenterOwner" Background="Transparent" Foreground="#F0F1F3" FontFamily="{DynamicResource AppFontFamily}" FontSize="14" UseLayoutRounding="True" FontFeatures="tnum" WindowDecorations="None" TransparencyLevelHint="Transparent" CanResize="False">
+  <Window.Resources>
+    <FontFamily x:Key="AppFontFamily">avares://DS5Link/Assets/Fonts#Geologica</FontFamily>
+    <SolidColorBrush x:Key="ShellFrameBrush" Color="#EE18181B" />
+    <SolidColorBrush x:Key="ShellBorderBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="ShellCardBrush" Color="#0EFFFFFF" />
+    <SolidColorBrush x:Key="ShellCardBorderBrush" Color="#12FFFFFF" />
+    <ControlTheme x:Key="SharedWindowFrame" TargetType="Border">
+      <Setter Property="CornerRadius" Value="28" />
+      <Setter Property="BorderThickness" Value="1" />
+    </ControlTheme>
+    <ControlTheme x:Key="SharedWindowShadow" TargetType="Border" BasedOn="{StaticResource SharedWindowFrame}">
+      <Setter Property="Background" Value="{StaticResource ShellFrameBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Effect">
+        <Setter.Value />
+      </Setter>
+      <Setter Property="BoxShadow" Value="0 10 32 0 #BF000000" />
+    </ControlTheme>
+    <ControlTheme x:Key="SharedWindowHighlight" TargetType="Border">
+      <Setter Property="CornerRadius" Value="27" />
+      <Setter Property="BorderBrush" Value="#14FFFFFF" />
+      <Setter Property="BorderThickness" Value="1,1,0,0" />
+      <Setter Property="Padding" Value="14" />
+    </ControlTheme>
+    <ControlTheme x:Key="SharedCard" TargetType="Border">
+      <Setter Property="CornerRadius" Value="20" />
+      <Setter Property="Background" Value="{StaticResource ShellCardBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource ShellCardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="14" />
+    </ControlTheme>
+    <ControlTheme x:Key="WindowsCloseButton" TargetType="Button">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="5">
+              <Viewbox Width="9" Height="9" Stretch="Uniform">
+                <Canvas Width="10" Height="10">
+                  <Path x:Name="Glyph" Data="M1 1 L9 9 M9 1 L1 9" Stroke="#99FFFFFF" StrokeThickness="1.3" StrokeLineCap="Round" />
+                </Canvas>
+              </Viewbox>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Setter Property="FontWeight" Value="Normal" />
+      <Style Selector="^:pointerover /template/ Border#Bg">
+        <Setter Property="Background" Value="#E81123" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Path#Glyph">
+        <Setter Property="Stroke" Value="White" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Bg">
+        <Setter Property="Background" Value="#BA141A" />
+      </Style>
+      <Style Selector="^:pressed /template/ Path#Glyph">
+        <Setter Property="Stroke" Value="White" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="WindowsMinimizeButton" TargetType="Button">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="5">
+              <Viewbox Width="9" Height="9" Stretch="Uniform">
+                <Canvas Width="10" Height="10">
+                  <Path x:Name="Glyph" Data="M0 5 L10 5" Stroke="#99FFFFFF" StrokeThickness="1.3" StrokeLineCap="Round" />
+                </Canvas>
+              </Viewbox>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Setter Property="FontWeight" Value="Normal" />
+      <Style Selector="^:pointerover /template/ Border#Bg">
+        <Setter Property="Background" Value="#1FFFFFFF" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Path#Glyph">
+        <Setter Property="Stroke" Value="White" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Bg">
+        <Setter Property="Background" Value="#30FFFFFF" />
+      </Style>
+      <Style Selector="^:pressed /template/ Path#Glyph">
+        <Setter Property="Stroke" Value="White" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="SegmentButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#8CFFFFFF" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Brd" Background="{TemplateBinding Background}" CornerRadius="12" Padding="0,5">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Brd">
+        <Setter Property="Background" Value="#15FFFFFF" />
+      </Style>
+      <Style Selector="^:pointerover">
+        <Setter Property="Foreground" Value="#E5FFFFFF" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Foreground" Value="#35FFFFFF" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Cursor" Value="Arrow" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="SegmentButtonActive" TargetType="Button" BasedOn="{StaticResource SegmentButton}">
+      <Setter Property="Background" Value="#2BFFFFFF" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Brd" Background="{TemplateBinding Background}" CornerRadius="12" Padding="0,5">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </ControlTheme>
+    <ControlTheme x:Key="IOSGreenSwitch" TargetType="CheckBox">
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Border x:Name="Track" Width="42" Height="24" CornerRadius="12" Background="#3D3D42">
+              <Canvas Width="42" Height="24">
+                <Ellipse x:Name="Thumb" Width="20" Height="20" Fill="#FFFFFF" Canvas.Top="2" Canvas.Left="2">
+                                    </Ellipse>
+              </Canvas>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:checked /template/ Ellipse#Thumb">
+        <Setter Property="Canvas.Left" Value="20" />
+      </Style>
+      <Style Selector="^ /template/ Ellipse#Thumb">
+        <Setter Property="Transitions">
+          <Transitions>
+            <DoubleTransition Property="Canvas.Left" Duration="0:0:0.25" />
+          </Transitions>
+        </Setter>
+      </Style>
+      <Style Selector="^:checked /template/ Border#Track">
+        <Setter Property="Background" Value="#30D158" />
+      </Style>
+      <Style Selector="^:disabled /template/ Border#Track">
+        <Setter Property="Opacity" Value="0.4" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="IOSBlueSwitch" TargetType="CheckBox">
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Border x:Name="Track" Width="42" Height="24" CornerRadius="12" Background="#3D3D42">
+              <Canvas Width="42" Height="24">
+                <Ellipse x:Name="Thumb" Width="20" Height="20" Fill="#FFFFFF" Canvas.Top="2" Canvas.Left="2">
+                                    </Ellipse>
+              </Canvas>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:checked /template/ Ellipse#Thumb">
+        <Setter Property="Canvas.Left" Value="20" />
+      </Style>
+      <Style Selector="^ /template/ Ellipse#Thumb">
+        <Setter Property="Transitions">
+          <Transitions>
+            <DoubleTransition Property="Canvas.Left" Duration="0:0:0.25" />
+          </Transitions>
+        </Setter>
+      </Style>
+      <Style Selector="^:checked /template/ Border#Track">
+        <Setter Property="Background" Value="#0A84FF" />
+      </Style>
+      <Style Selector="^:disabled /template/ Border#Track">
+        <Setter Property="Opacity" Value="0.4" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="ApplePillButton" TargetType="Button">
+      <Setter Property="Height" Value="38" />
+      <Setter Property="Background" Value="#0FFFFFFF" />
+      <Setter Property="BorderBrush" Value="#0AFFFFFF" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Foreground" Value="#D9FFFFFF" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bg" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="16">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Bg">
+        <Setter Property="Background" Value="#1CFFFFFF" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Bg">
+        <Setter Property="Background" Value="#14FFFFFF" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Bg">
+        <Setter Property="RenderTransform">
+          <Setter.Value>
+            <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style Selector="^:disabled /template/ Border#Bg">
+        <Setter Property="Opacity" Value="0.4" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Cursor" Value="Arrow" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="ApplePillButtonDanger" TargetType="Button" BasedOn="{StaticResource ApplePillButton}">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bg" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="16">
+              <ContentPresenter x:Name="Content" HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Bg">
+        <Setter Property="Background" Value="#25FF453A" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Border#Bg">
+        <Setter Property="BorderBrush" Value="#50FF453A" />
+      </Style>
+      <Style Selector="^:pointerover">
+        <Setter Property="Foreground" Value="#FF6961" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Bg">
+        <Setter Property="Background" Value="#35FF453A" />
+      </Style>
+      <Style Selector="^:pressed">
+        <Setter Property="Foreground" Value="#FF6961" />
+      </Style>
+      <Style Selector="^:disabled /template/ Border#Bg">
+        <Setter Property="Opacity" Value="0.4" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Cursor" Value="Arrow" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="PrimaryActionButton" TargetType="Button">
+      <Setter Property="Height" Value="36" />
+      <Setter Property="Background" Value="#17FFFFFF" />
+      <Setter Property="BorderBrush" Value="#10FFFFFF" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Foreground" Value="#F3F4F6" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bg" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="13">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Bg">
+        <Setter Property="Background" Value="#25FFFFFF" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Bg">
+        <Setter Property="Background" Value="#14FFFFFF" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Bg">
+        <Setter Property="RenderTransform">
+          <Setter.Value>
+            <ScaleTransform ScaleX="0.985" ScaleY="0.985" />
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style Selector="^:disabled /template/ Border#Bg">
+        <Setter Property="Opacity" Value="0.4" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Cursor" Value="Arrow" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="InputSlider" TargetType="Slider">
+      <Setter Property="Height" Value="22" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Slider">
+            <Grid>
+              <Border Height="4" CornerRadius="2" Background="#30FFFFFF" VerticalAlignment="Center" Margin="8,0" />
+              <Track x:Name="PART_Track" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="{TemplateBinding IsDirectionReversed}" Value="{Binding Value,RelativeSource={RelativeSource TemplatedParent},Mode=TwoWay}">
+                <Track.DecreaseButton>
+                  <RepeatButton Focusable="False">
+                    <RepeatButton.Template>
+                      <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent" />
+                      </ControlTemplate>
+                    </RepeatButton.Template>
+                  </RepeatButton>
+                </Track.DecreaseButton>
+                <Track.Thumb>
+                  <Thumb Width="16" Height="16">
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Ellipse Fill="#F0F1F3" Stroke="#50FFFFFF" />
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Track.Thumb>
+                <Track.IncreaseButton>
+                  <RepeatButton Focusable="False">
+                    <RepeatButton.Template>
+                      <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent" />
+                      </ControlTemplate>
+                    </RepeatButton.Template>
+                  </RepeatButton>
+                </Track.IncreaseButton>
+              </Track>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </ControlTheme>
+    <ControlTheme x:Key="GhostRowButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bg" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+              <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Setter Property="FontWeight" Value="Normal" />
+      <Style Selector="^:pointerover /template/ Border#Bg">
+        <Setter Property="Background" Value="#0AFFFFFF" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="CompactButton" TargetType="Button">
+      <Setter Property="Background" Value="#17FFFFFF" />
+      <Setter Property="Foreground" Value="#F3F4F6" />
+      <Setter Property="BorderBrush" Value="#10FFFFFF" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="ButtonSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="13" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#ButtonSurface">
+        <Setter Property="Background" Value="#25FFFFFF" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Border#ButtonSurface">
+        <Setter Property="BorderBrush" Value="#20FFFFFF" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#ButtonSurface">
+        <Setter Property="Background" Value="#12FFFFFF" />
+      </Style>
+      <Style Selector="^:disabled /template/ Border#ButtonSurface">
+        <Setter Property="Opacity" Value="0.4" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Cursor" Value="Arrow" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="LanguageButtonStyle" TargetType="Button">
+      <Setter Property="Background" Value="#0CFFFFFF" />
+      <Setter Property="BorderBrush" Value="#16FFFFFF" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="2">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Setter Property="FontWeight" Value="Normal" />
+      <Style Selector="^:pointerover /template/ Border#Frame">
+        <Setter Property="Background" Value="#18FFFFFF" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Frame">
+        <Setter Property="Opacity" Value="0.75" />
+      </Style>
+      <Style Selector="^:disabled /template/ Border#Frame">
+        <Setter Property="Opacity" Value="0.45" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="QuietButton" TargetType="Button" BasedOn="{StaticResource CompactButton}">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="#8CFFFFFF" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Padding" Value="12,5" />
+    </ControlTheme>
+    <ControlTheme x:Key="ShellScrollBar" TargetType="ScrollBar" BasedOn="{StaticResource {x:Type ScrollBar}}">
+      <Setter Property="Width" Value="5" />
+      <Setter Property="Background" Value="Transparent" />
+    </ControlTheme>
+    <ControlTheme x:Key="SettingsTabs" TargetType="TabControl">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabControl">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+              <Border Background="#0DFFFFFF" CornerRadius="13" Margin="0,0,0,14" Padding="3">
+                <ItemsPresenter Name="PART_ItemsPresenter" />
+              </Border>
+              <ContentPresenter x:Name="PART_SelectedContentHost" Grid.Row="1" Content="{TemplateBinding SelectedContent}" ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </ControlTheme>
+    <ControlTheme x:Key="SettingsTab" TargetType="TabItem">
+      <Setter Property="Foreground" Value="#99FFFFFF" />
+      <Setter Property="Padding" Value="18,8" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabItem">
+            <Border x:Name="TabBg" CornerRadius="10" Padding="{TemplateBinding Padding}" Background="Transparent">
+              <ContentPresenter Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:selected /template/ Border#TabBg">
+        <Setter Property="Background" Value="#24FFFFFF" />
+      </Style>
+      <Style Selector="^:selected">
+        <Setter Property="Foreground" Value="White" />
+      </Style>
+      <Style Selector="^:pointerover">
+        <Setter Property="Foreground" Value="White" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="DarkComboItem" TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+      <Setter Property="Foreground" Value="#EEEEEE" />
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="Margin" Value="2,1" />
+      <Setter Property="MinHeight" Value="34" />
+    </ControlTheme>
+    <ControlTheme x:Key="DarkCombo" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+      <Setter Property="Foreground" Value="#F0F1F3" />
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="CornerRadius" Value="13" />
+      <Setter Property="Background" Value="#17FFFFFF" />
+      <Setter Property="BorderBrush" Value="#10FFFFFF" />
+      <Setter Property="Padding" Value="12,7" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="FontWeight" Value="Normal" />
+    </ControlTheme>
+    <ControlTheme x:Key="SettingsSidebarTabs" TargetType="TabControl">
+      <Setter Property="TabStripPlacement" Value="Left" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabControl">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="174" />
+                <ColumnDefinition Width="20" />
+                <ColumnDefinition />
+              </Grid.ColumnDefinitions>
+              <Border Background="{StaticResource ShellCardBrush}" BorderBrush="{StaticResource ShellCardBorderBrush}" BorderThickness="1" CornerRadius="20" Padding="6" VerticalAlignment="Top">
+                <ItemsPresenter Name="PART_ItemsPresenter" />
+              </Border>
+              <ScrollViewer x:Name="SettingsPageScroll" Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
+                <ContentPresenter x:Name="PART_SelectedContentHost" Content="{TemplateBinding SelectedContent}" ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+              </ScrollViewer>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </ControlTheme>
+    <SolidColorBrush x:Key="SettingsAccent" Color="#72B4FF" />
+    <ControlTheme x:Key="SettingsBindingButton" TargetType="Button" BasedOn="{StaticResource CompactButton}">
+      <Setter Property="Background" Value="#1F0A84FF" />
+      <Setter Property="BorderBrush" Value="#400A84FF" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
+      <Setter Property="FontSize" Value="17" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="MinHeight" Value="56" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="14" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Surface">
+        <Setter Property="Background" Value="#300A84FF" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Border#Surface">
+        <Setter Property="BorderBrush" Value="#600A84FF" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Surface">
+        <Setter Property="Background" Value="#150A84FF" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme TargetType="CheckBox" x:Key="{x:Type CheckBox}">
+      <Setter Property="Foreground" Value="#DDFFFFFF" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="26" />
+                <ColumnDefinition />
+              </Grid.ColumnDefinitions>
+              <Border x:Name="CheckSurface" Width="18" Height="18" CornerRadius="6" Background="#17FFFFFF" BorderBrush="#35FFFFFF" BorderThickness="1" VerticalAlignment="Top">
+                <Path x:Name="CheckGlyph" Data="M0 4 L3 7 L9 0" Stroke="White" StrokeThickness="1.7" Width="10" Height="8" HorizontalAlignment="Center" VerticalAlignment="Center" StrokeLineCap="Round" IsVisible="False" />
+              </Border>
+              <ContentPresenter Grid.Column="1" VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:checked /template/ Border#CheckSurface">
+        <Setter Property="Background" Value="#0A84FF" />
+      </Style>
+      <Style Selector="^:checked /template/ Border#CheckSurface">
+        <Setter Property="BorderBrush" Value="#400A84FF" />
+      </Style>
+      <Style Selector="^:checked /template/ Path#CheckGlyph">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Border#CheckSurface">
+        <Setter Property="BorderBrush" Value="White" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.4" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="SettingsSidebarHeader" TargetType="StackPanel">
+      <Setter Property="TextElement.FontWeight" Value="Medium" />
+    </ControlTheme>
+    <ControlTheme x:Key="SettingsSidebarItem" TargetType="TabItem">
+      <Setter Property="Foreground" Value="#8CFFFFFF" />
+      <Setter Property="Padding" Value="14,11" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabItem">
+            <Border x:Name="Item" CornerRadius="13" Background="Transparent" Padding="{TemplateBinding Padding}" BorderThickness="1" BorderBrush="Transparent">
+              <ContentPresenter Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Item">
+        <Setter Property="Background" Value="#15FFFFFF" />
+      </Style>
+      <Style Selector="^:pointerover">
+        <Setter Property="Foreground" Value="#E5FFFFFF" />
+      </Style>
+      <Style Selector="^:selected /template/ Border#Item">
+        <Setter Property="Background" Value="#2BFFFFFF" />
+      </Style>
+      <Style Selector="^:selected /template/ Border#Item">
+        <Setter Property="BorderBrush" Value="#14FFFFFF" />
+      </Style>
+      <Style Selector="^:selected">
+        <Setter Property="Foreground" Value="White" />
+      </Style>
+    </ControlTheme>
+  </Window.Resources>
+  <Grid Margin="16">
+    <Border Theme="{StaticResource SharedWindowShadow}" />
+    <Border x:Name="WindowFrame" Theme="{StaticResource SharedWindowFrame}">
+      <Border Theme="{StaticResource SharedWindowHighlight}">
+        <Grid x:Name="SettingsLayout">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="34" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <Grid x:Name="DragHeader" Background="Transparent" Margin="2,0,2,8">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock Text="DS5Link" FontSize="14" FontWeight="SemiBold" Foreground="#E5FFFFFF" />
+              <TextBlock Text=" · " FontSize="14" Foreground="#44FFFFFF" Margin="3,0" />
+              <TextBlock Text="{local:Tr Key=985b5e0f2ccf}" FontSize="14" Foreground="#B8FFFFFF" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+              <Button x:Name="MinimizeBtn" Click="MinimizeWindow" Theme="{StaticResource WindowsMinimizeButton}" ToolTip.Tip="{local:Tr Key=36c25d9ffcfd}" />
+              <Button x:Name="CloseBtn" Click="CloseWindow" Margin="2,0,0,0" Theme="{StaticResource WindowsCloseButton}" ToolTip.Tip="{local:Tr Key=ea4361602090}" />
+            </StackPanel>
+          </Grid>
+          <Grid Grid.Row="1" Margin="4,4,4,16">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="194" />
+              <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center">
+              <TextBlock Text="{local:Tr Key=985b5e0f2ccf}" FontSize="22" FontWeight="SemiBold" Foreground="White" />
+              <TextBlock Text="{local:Tr Key=ef1b6a12a28e}" Foreground="#B8FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,4,0,0" />
+            </StackPanel>
+            <Border Grid.Column="1" Padding="16,10" Theme="{StaticResource SharedCard}">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock Text="{local:Tr Key=359497aff53e}" FontSize="14" FontWeight="Normal" Foreground="#B8FFFFFF" Margin="0,0,0,4" />
+                  <Grid x:Name="ProfileBar">
+                    <ComboBox x:Name="ProfileSelector" SelectionChanged="SelectProfile" Theme="{StaticResource DarkCombo}" AutomationProperties.Name="{local:Tr Key=ed2568c2fe8f}" />
+                  </Grid>
+                </StackPanel>
+                <Border Grid.Column="1" CornerRadius="10" Background="#10FFFFFF" BorderBrush="#12FFFFFF" BorderThickness="1" Padding="10,4" VerticalAlignment="Center" Margin="16,0,0,0">
+                  <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="6" Height="6" Fill="#0A84FF" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <TextBlock x:Name="ActiveProfileText" FontSize="14" FontWeight="Normal" Foreground="#C4FFFFFF" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="220" />
+                  </StackPanel>
+                </Border>
+              </Grid>
+            </Border>
+          </Grid>
+          <TabControl x:Name="SettingsTabs" Grid.Row="2" SelectedIndex="1" Theme="{StaticResource SettingsSidebarTabs}">
+            <TabItem x:Name="ProfilesTab" AutomationProperties.Name="{local:Tr Key=30c61037264b}" Theme="{StaticResource SettingsSidebarItem}">
+              <TabItem.Header>
+                <StackPanel Orientation="Horizontal" Theme="{StaticResource SettingsSidebarHeader}">
+                  <TextBlock Text="" FontFamily="Segoe MDL2 Assets" FontSize="17" Width="28" VerticalAlignment="Center" />
+                  <TextBlock Text="{local:Tr Key=30c61037264b}" FontSize="14" VerticalAlignment="Center" />
+                </StackPanel>
+              </TabItem.Header>
+              <Grid>
+                <StackPanel>
+                  <TextBlock Text="{local:Tr Key=2c9ee214648c}" FontSize="24" FontWeight="SemiBold" />
+                  <TextBlock Text="{local:Tr Key=d0bc0ca4eca3}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                  <Border Margin="0,20,0,14" Padding="22" MaxWidth="580" HorizontalAlignment="Left" Theme="{StaticResource SharedCard}">
+                    <StackPanel>
+                      <TextBlock Text="{local:Tr Key=0917f0563097}" FontSize="16" FontWeight="SemiBold" />
+                      <TextBlock Text="{local:Tr Key=31d635f71e4f}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                      <Border Background="#0AFFFFFF" CornerRadius="14" Padding="14" Margin="0,18,0,16">
+                        <StackPanel>
+                          <TextBlock Text="{local:Tr Key=38de927163a0}" FontSize="14" Foreground="#B8FFFFFF" />
+                          <TextBlock x:Name="ProfilePath" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                        </StackPanel>
+                      </Border>
+                      <StackPanel Orientation="Horizontal">
+                        <Button x:Name="AddProfileButton" Content="{local:Tr Key=98f6f3c36984}" Click="AddGameProfile" Padding="18,9" Theme="{StaticResource CompactButton}" />
+                        <Button x:Name="RemoveProfileButton" Content="{local:Tr Key=be99b1361201}" Click="RemoveGameProfile" Margin="12,0,0,0" Theme="{StaticResource QuietButton}" />
+                      </StackPanel>
+                    </StackPanel>
+                  </Border>
+                  <Border Padding="22" MaxWidth="580" HorizontalAlignment="Left" Theme="{StaticResource SharedCard}">
+                    <StackPanel>
+                      <TextBlock Text="{local:Tr Key=816d2d526b54}" FontSize="16" FontWeight="SemiBold" />
+                      <TextBlock Text="{local:Tr Key=134c5e7e0095}" FontWeight="SemiBold" Margin="0,18,0,0" />
+                      <TextBlock Text="{local:Tr Key=7e15802aefa5}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                      <TextBlock Text="{local:Tr Key=4f7afb38bab1}" FontWeight="SemiBold" Margin="0,16,0,0" />
+                      <TextBlock Text="{local:Tr Key=038040b7ecea}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                      <TextBlock Text="{local:Tr Key=4dd6e5425647}" FontWeight="SemiBold" Margin="0,16,0,0" />
+                      <TextBlock Text="{local:Tr Key=e8d7a62f941a}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </Grid>
+            </TabItem>
+            <TabItem x:Name="TouchpadTab" AutomationProperties.Name="{local:Tr Key=9956df53e7e8}" Theme="{StaticResource SettingsSidebarItem}">
+              <TabItem.Header>
+                <StackPanel Orientation="Horizontal" Theme="{StaticResource SettingsSidebarHeader}">
+                  <TextBlock Text="" FontFamily="Segoe MDL2 Assets" FontSize="17" Width="28" VerticalAlignment="Center" />
+                  <TextBlock Text="{local:Tr Key=9956df53e7e8}" FontSize="14" VerticalAlignment="Center" />
+                </StackPanel>
+              </TabItem.Header>
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,18">
+                  <TextBlock Text="{local:Tr Key=9956df53e7e8}" FontSize="24" FontWeight="SemiBold" />
+                  <TextBlock Text="{local:Tr Key=ffab08b397ab}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                </StackPanel>
+                <Grid Grid.Row="1">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="270" />
+                  </Grid.ColumnDefinitions>
+                  <Border x:Name="SettingsScroll" Padding="20" VerticalAlignment="Top" Theme="{StaticResource SharedCard}">
+                    <StackPanel>
+                      <TextBlock Text="{local:Tr Key=e3df6fd07025}" FontSize="15" FontWeight="SemiBold" />
+                      <local:TouchpadView x:Name="TouchVisual" Height="200" Margin="0,14,0,16" />
+                      <UniformGrid x:Name="ClickButtons" Columns="2" />
+                      <TextBlock Text="{local:Tr Key=755e370cb659}" FontSize="14" Foreground="#C4FFFFFF" Margin="0,20,0,8" />
+                      <UniformGrid x:Name="GestureButtons" Columns="5" />
+                      <TextBlock Text="{local:Tr Key=4d6ec937f0e6}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                    </StackPanel>
+                  </Border>
+                  <StackPanel Grid.Column="2">
+                    <Border Padding="20" Theme="{StaticResource SharedCard}">
+                      <StackPanel>
+                        <Grid>
+                          <TextBlock Text="{local:Tr Key=d8b29aea2a9d}" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                          <CheckBox x:Name="TouchBindingsEnabled" HorizontalAlignment="Right" Theme="{StaticResource IOSBlueSwitch}" />
+                        </Grid>
+                        <TextBlock Text="{local:Tr Key=f3683a8af02e}" FontSize="14" Foreground="#B8FFFFFF" Margin="0,24,0,5" />
+                        <TextBlock x:Name="SelectedActionName" FontSize="17" FontWeight="Normal" TextWrapping="Wrap" />
+                        <Button x:Name="SelectedBindingButton" Content="{local:Tr Key=f3120930eaec}" Margin="0,18,0,0" Click="CaptureSelectedAction" Theme="{StaticResource SettingsBindingButton}" />
+                        <TextBlock Text="{local:Tr Key=5ea52af246e2}" FontSize="14" Foreground="#B8FFFFFF" TextWrapping="Wrap" HorizontalAlignment="Center" Margin="0,8,0,0" />
+                        <Button Content="{local:Tr Key=8965271d3c97}" Margin="0,12,0,0" HorizontalAlignment="Center" Click="ClearSelectedBinding" Theme="{StaticResource QuietButton}" />
+                        <Border Height="1" Background="#12FFFFFF" Margin="0,18,0,18" />
+                        <CheckBox x:Name="ConsumeTouchpad" Foreground="#BBFFFFFF">
+                          <TextBlock Text="{local:Tr Key=0c41bc6cd02e}" TextWrapping="Wrap" FontSize="14" Width="190" />
+                        </CheckBox>
+                        <TextBlock Text="{local:Tr Key=ea2bdea116b9}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                      </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="CaptureHint" Text="{local:Tr Key=245f443e9e86}" TextWrapping="Wrap" Foreground="#C4FFFFFF" FontSize="14" Margin="8,14,8,0" />
+                  </StackPanel>
+                </Grid>
+              </Grid>
+            </TabItem>
+            <TabItem x:Name="SticksTab" AutomationProperties.Name="{local:Tr Key=bf1c4e37cebe}" Theme="{StaticResource SettingsSidebarItem}">
+              <TabItem.Header>
+                <StackPanel Orientation="Horizontal" Theme="{StaticResource SettingsSidebarHeader}">
+                  <TextBlock Text="" FontFamily="Segoe MDL2 Assets" FontSize="17" Width="28" VerticalAlignment="Center" />
+                  <TextBlock Text="{local:Tr Key=bf1c4e37cebe}" FontSize="14" VerticalAlignment="Center" />
+                </StackPanel>
+              </TabItem.Header>
+              <Grid>
+                <StackPanel>
+                  <TextBlock Text="{local:Tr Key=bf1c4e37cebe}" FontSize="24" FontWeight="SemiBold" />
+                  <TextBlock Text="{local:Tr Key=11381d971739}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                  <Grid Margin="0,20,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition />
+                      <ColumnDefinition Width="16" />
+                      <ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Padding="24" Theme="{StaticResource SharedCard}">
+                      <StackPanel>
+                        <TextBlock Text="{local:Tr Key=07870d9873ad}" FontSize="17" FontWeight="SemiBold" />
+                        <local:StickView x:Name="LeftVisual" Height="238" Margin="0,16,0,16" />
+                        <Grid>
+                          <TextBlock Text="{local:Tr Key=15c0ea81ef19}" Foreground="#BBFFFFFF" />
+                          <TextBlock x:Name="LeftDeadzoneValue" HorizontalAlignment="Right" />
+                        </Grid>
+                        <Slider x:Name="LeftDeadzone" Minimum="0" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="DeadzoneChanged" Margin="0,10,0,0" Theme="{StaticResource InputSlider}" />
+                      </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Padding="24" Theme="{StaticResource SharedCard}">
+                      <StackPanel>
+                        <TextBlock Text="{local:Tr Key=85bdc26de6c5}" FontSize="17" FontWeight="SemiBold" />
+                        <local:StickView x:Name="RightVisual" Height="238" Margin="0,16,0,16" />
+                        <Grid>
+                          <TextBlock Text="{local:Tr Key=15c0ea81ef19}" Foreground="#BBFFFFFF" />
+                          <TextBlock x:Name="RightDeadzoneValue" HorizontalAlignment="Right" />
+                        </Grid>
+                        <Slider x:Name="RightDeadzone" Minimum="0" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="DeadzoneChanged" Margin="0,10,0,0" Theme="{StaticResource InputSlider}" />
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                  <Border Background="#0AFFFFFF" CornerRadius="16" Padding="16" Margin="0,16,0,0">
+                    <TextBlock Text="{local:Tr Key=7d69a0dd8ed7}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" Margin="0,6,0,0" />
+                  </Border>
+                </StackPanel>
+              </Grid>
+            </TabItem>
+            <TabItem x:Name="EffectsTab" AutomationProperties.Name="{local:Tr Key=0211646a36e1}" Theme="{StaticResource SettingsSidebarItem}">
+              <TabItem.Header>
+                <StackPanel Orientation="Horizontal" Theme="{StaticResource SettingsSidebarHeader}">
+                  <TextBlock Text="" FontFamily="Segoe MDL2 Assets" FontSize="17" Width="28" VerticalAlignment="Center" />
+                  <TextBlock Text="{local:Tr Key=0211646a36e1}" FontSize="14" VerticalAlignment="Center" />
+                </StackPanel>
+              </TabItem.Header>
+              <Grid>
+                <StackPanel>
+                  <TextBlock Text="{local:Tr Key=c61f9f8272b9}" FontSize="24" FontWeight="SemiBold" />
+                  <TextBlock Text="{local:Tr Key=861bfb08a373}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                  <Grid Margin="0,18,0,12">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition />
+                      <ColumnDefinition Width="280" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{local:Tr Key=faaa59ea728f}" VerticalAlignment="Center" Foreground="#C4FFFFFF" />
+                    <ComboBox x:Name="TriggerPreset" Grid.Column="1" Theme="{StaticResource DarkCombo}" />
+                  </Grid>
+                  <Grid Height="106" ClipToBounds="True" Margin="0,0,0,12">
+                    <Image Source="avares://DS5Link/Assets/DualSense-card.png" Stretch="Uniform" Width="250" Height="150" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                    <Border Background="#200A84FF" BorderBrush="#400A84FF" BorderThickness="1" CornerRadius="12" Padding="14,6" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="180,0,0,0">
+                      <TextBlock Text="L2" FontSize="16" Foreground="#72B4FF" FontWeight="Normal" />
+                    </Border>
+                    <Border Background="#200A84FF" BorderBrush="#400A84FF" BorderThickness="1" CornerRadius="12" Padding="14,6" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,180,0">
+                      <TextBlock Text="R2" FontSize="16" Foreground="#72B4FF" FontWeight="Normal" />
+                    </Border>
+                  </Grid>
+                  <UniformGrid x:Name="TriggerEditors" Columns="2" />
+                  <Border x:Name="EffectsScroll" Background="#0AFFFFFF" CornerRadius="16" Padding="16" Margin="0,14,0,0">
+                    <TextBlock x:Name="TriggerOwnership" Text="{local:Tr Key=9af70bbe07e6}" FontSize="14" Foreground="#C4FFFFFF" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" />
+                  </Border>
+                </StackPanel>
+              </Grid>
+            </TabItem>
+            <TabItem x:Name="LightingTab" AutomationProperties.Name="{local:Tr Key=985936f581a1}" Theme="{StaticResource SettingsSidebarItem}">
+              <TabItem.Header>
+                <StackPanel Orientation="Horizontal" Theme="{StaticResource SettingsSidebarHeader}">
+                  <TextBlock Text="" FontFamily="Segoe MDL2 Assets" FontSize="17" Width="28" VerticalAlignment="Center" />
+                  <TextBlock Text="{local:Tr Key=985936f581a1}" FontSize="14" VerticalAlignment="Center" />
+                </StackPanel>
+              </TabItem.Header>
+              <Grid>
+                <StackPanel>
+                  <TextBlock Text="{local:Tr Key=985936f581a1}" FontSize="24" FontWeight="SemiBold" />
+                  <TextBlock Text="{local:Tr Key=2c9b65225816}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                  <Border Padding="24" Margin="0,20,0,0" Theme="{StaticResource SharedCard}">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition />
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="260" />
+                      </Grid.ColumnDefinitions>
+                      <StackPanel>
+                        <ComboBox x:Name="LedMode" Margin="0,0,0,18" Theme="{StaticResource DarkCombo}" />
+                        <StackPanel x:Name="LedManualControls">
+                          <UniformGrid x:Name="LedSwatches" Columns="7" Margin="0,0,0,18" />
+                          <StackPanel x:Name="RgbSliders" />
+                          <Grid Margin="0,14,0,0">
+                            <TextBlock Text="{local:Tr Key=94b0411574ad}" Foreground="#BBFFFFFF" />
+                            <TextBlock x:Name="BrightnessLabel" HorizontalAlignment="Right" />
+                          </Grid>
+                          <Slider x:Name="LedBrightness" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,8,0,16" Theme="{StaticResource InputSlider}" />
+                          <Grid>
+                            <TextBlock Text="{local:Tr Key=7bb0153b7a5a}" Foreground="#BBFFFFFF" />
+                            <TextBlock x:Name="SpeedLabel" HorizontalAlignment="Right" />
+                          </Grid>
+                          <Slider x:Name="LedSpeed" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,8,0,0" Theme="{StaticResource InputSlider}" />
+                        </StackPanel>
+                      </StackPanel>
+                      <Border Grid.Column="2" Background="#0C0C0F" CornerRadius="20" Padding="20">
+                        <StackPanel VerticalAlignment="Center">
+                          <Image Source="avares://DS5Link/Assets/DualSense-card.png" Height="200" Stretch="Uniform" />
+                          <Border x:Name="LedPreview" Height="12" CornerRadius="6" Background="#0A84FF" Margin="25,18,25,0" />
+                          <TextBlock Text="{local:Tr Key=32060a34f5be}" HorizontalAlignment="Center" Foreground="#B8FFFFFF" FontSize="14" Margin="0,12,0,0" />
+                        </StackPanel>
+                      </Border>
+                    </Grid>
+                  </Border>
+                  <TextBlock x:Name="LedOwnership" Text="{local:Tr Key=0502189b512d}" TextWrapping="Wrap" FontSize="14" Foreground="#C4FFFFFF" MaxWidth="560" HorizontalAlignment="Left" Margin="12,16,12,0" />
+                </StackPanel>
+              </Grid>
+            </TabItem>
+            <TabItem x:Name="AudioTab" AutomationProperties.Name="{local:Tr Key=6a40ca96136a}" Theme="{StaticResource SettingsSidebarItem}">
+              <TabItem.Header>
+                <StackPanel Orientation="Horizontal" Theme="{StaticResource SettingsSidebarHeader}">
+                  <TextBlock Text="" FontFamily="Segoe MDL2 Assets" FontSize="17" Width="28" VerticalAlignment="Center" />
+                  <TextBlock Text="{local:Tr Key=6a40ca96136a}" FontSize="14" VerticalAlignment="Center" />
+                </StackPanel>
+              </TabItem.Header>
+              <Grid>
+                <StackPanel>
+                  <TextBlock Text="{local:Tr Key=e5f1f61945af}" FontSize="24" FontWeight="SemiBold" />
+                  <TextBlock Text="{local:Tr Key=943516566d1e}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" Margin="0,6,0,0" />
+                  <Border x:Name="AudioEffectsCard" Padding="24" Margin="0,20,0,0" Theme="{StaticResource SharedCard}">
+                    <StackPanel>
+                      <Grid>
+                        <TextBlock Text="{local:Tr Key=80dcbc4a2bdc}" FontSize="17" FontWeight="SemiBold" />
+                        <CheckBox x:Name="AudioEffectsEnabled" HorizontalAlignment="Right" Theme="{StaticResource IOSBlueSwitch}" />
+                      </Grid>
+                      <TextBlock Text="{local:Tr Key=41ed44bb406e}" Foreground="#C4FFFFFF" FontSize="14" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" Margin="0,6,0,0" />
+                      <TextBlock Text="{local:Tr Key=298a637fde2c}" FontSize="14" Foreground="#C4FFFFFF" Margin="0,24,0,8" />
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition />
+                          <ColumnDefinition Width="42" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="AudioDevice" Theme="{StaticResource DarkCombo}" />
+                        <Button Grid.Column="1" Content="↻" Click="RefreshAudioDevices" Margin="8,0,0,0" Padding="4" ToolTip.Tip="{local:Tr Key=9c1c463bb43a}" Theme="{StaticResource CompactButton}" />
+                      </Grid>
+                      <StackPanel x:Name="AudioSliders" Margin="0,22,0,0" />
+                      <CheckBox x:Name="AudioBassOnly" Content="{local:Tr Key=f46d91036eba}" Foreground="#BBFFFFFF" FontSize="14" Margin="0,16,0,20" />
+                      <ProgressBar x:Name="AudioMeter" Height="6" Minimum="0" Maximum="100" Background="#25FFFFFF" Foreground="#0A84FF" BorderThickness="0" />
+                      <TextBlock x:Name="AudioStatus" Text="{local:Tr Key=af2d2566893f}" FontSize="14" Foreground="#C4FFFFFF" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" Margin="0,12,0,0" />
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </Grid>
+            </TabItem>
+          </TabControl>
+          <Grid Grid.Row="3" Margin="194,14,0,0">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid>
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse x:Name="SaveStatusDot" Width="6" Height="6" Fill="#88FFFFFF" Margin="0,0,8,0" />
+                <TextBlock x:Name="SaveStatusText" Text="{local:Tr Key=a2674cebbc63}" Foreground="#C4FFFFFF" FontSize="14" />
+              </StackPanel>
+              <Button x:Name="ResetEffectsButton" Content="{local:Tr Key=05c4d434c8e8}" HorizontalAlignment="Right" Click="ResetEffects" Theme="{StaticResource QuietButton}" IsVisible="False" />
+            </Grid>
+            <TextBlock x:Name="InputSettingsNotice" Grid.Row="1" Foreground="#FFB3A7" FontSize="14" TextWrapping="Wrap" Margin="0,8,0,0" IsVisible="False" />
+          </Grid>
+        </Grid>
+      </Border>
+    </Border>
+  </Grid>
+</Window>

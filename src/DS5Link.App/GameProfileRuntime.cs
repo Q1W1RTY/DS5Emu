@@ -61,7 +61,7 @@ internal sealed partial class MainWindow {
    inputSettingsWindow?.SetActiveProfile(target.Label);
   }catch(Exception error){
    profileApplied=false;nextProfileRetry=Environment.TickCount64+3000;
-   inputSettingsWindow?.SetActiveProfile("Ошибка применения: "+error.Message);
+   inputSettingsWindow?.SetActiveProfile(L.T("Ошибка применения: ")+error.Message);
   }finally{profileSwitching=false;}
  }
  bool ProfileAllowsKeyboard(){

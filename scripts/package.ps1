@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param()
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
@@ -9,8 +9,8 @@ $stamp=Get-Date -Format yyyyMMdd-HHmmss
 $output=Join-Path $root (('artifacts\packages\DS5Link-'+$version+'-')+$stamp)
 $app=Join-Path $output 'app';New-Item -ItemType Directory $app -Force | Out-Null
 $dotnet=Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
-& $dotnet publish (Join-Path $root 'src\DS5Link.App\DS5Link.App.csproj') -c Release -r win-x64 --self-contained true -p:Platform=AnyCPU -p:SatelliteResourceLanguages=ru -p:DebugType=None -p:DebugSymbols=false -o $app
-if($LASTEXITCODE){throw 'WPF self-contained publish failed'}
+& $dotnet publish (Join-Path $root 'src\DS5Link.Avalonia\DS5Link.Avalonia.csproj') -c Release -r win-x64 --self-contained true -p:Platform=AnyCPU -p:SatelliteResourceLanguages=ru -p:DebugType=None -p:DebugSymbols=false -o $app
+if($LASTEXITCODE){throw 'Avalonia self-contained publish failed'}
 $engine=Join-Path $app 'engine';New-Item -ItemType Directory $engine | Out-Null
 foreach($file in @('vdsd.exe','vdsctl.exe','opus.dll')){Copy-Item (Join-Path $native $file) $engine}
 $crt=Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.CRT'

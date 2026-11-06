@@ -1,12 +1,18 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+        <FontFamily x:Key="AppFontFamily">pack://application:,,,/DS5Link;component/Assets/Fonts/#Golos Text, Segoe UI, sans-serif</FontFamily>
         <SolidColorBrush x:Key="ShellFrameBrush" Color="#EE18181B"/>
         <SolidColorBrush x:Key="ShellBorderBrush" Color="#26FFFFFF"/>
         <SolidColorBrush x:Key="ShellCardBrush" Color="#0EFFFFFF"/>
         <SolidColorBrush x:Key="ShellCardBorderBrush" Color="#12FFFFFF"/>
         <Style x:Key="SharedWindowFrame" TargetType="Border">
-            <Setter Property="CornerRadius" Value="28"/><Setter Property="Background" Value="{StaticResource ShellFrameBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/><Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="28"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style x:Key="SharedWindowShadow" TargetType="Border" BasedOn="{StaticResource SharedWindowFrame}">
+            <Setter Property="Background" Value="{StaticResource ShellFrameBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
             <Setter Property="Effect"><Setter.Value><DropShadowEffect BlurRadius="32" ShadowDepth="10" Direction="270" Color="#000000" Opacity="0.75"/></Setter.Value></Setter>
         </Style>
         <Style x:Key="SharedWindowHighlight" TargetType="Border">
@@ -88,7 +94,7 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#8CFFFFFF"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="Medium"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
@@ -116,14 +122,11 @@
         <Style x:Key="SegmentButtonActive" TargetType="Button" BasedOn="{StaticResource SegmentButton}">
             <Setter Property="Background" Value="#2BFFFFFF"/>
             <Setter Property="Foreground" Value="#FFFFFF"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontWeight" Value="Medium"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Brd" Background="{TemplateBinding Background}" CornerRadius="12" Padding="0,5">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="4" ShadowDepth="1" Direction="270" Color="#000000" Opacity="0.35"/>
-                            </Border.Effect>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                     </ControlTemplate>
@@ -232,7 +235,7 @@
             <Setter Property="BorderBrush" Value="#0AFFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Foreground" Value="#D9FFFFFF"/>
-            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="Medium"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
@@ -298,7 +301,7 @@
             <Setter Property="BorderBrush" Value="#10FFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Foreground" Value="#F3F4F6"/>
-            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="Medium"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
@@ -373,7 +376,7 @@
             <Setter Property="Foreground" Value="#E5FFFFFF"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="10,5"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontSize" Value="11.5"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
@@ -395,12 +398,27 @@
             </Setter>
         </Style>
 
+        <Style x:Key="LanguageButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#0CFFFFFF"/><Setter Property="BorderBrush" Value="#16FFFFFF"/>
+            <Setter Property="Cursor" Value="Hand"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+                <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="2">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="#18FFFFFF"/></Trigger>
+                    <Trigger Property="IsPressed" Value="True"><Setter TargetName="Frame" Property="Opacity" Value="0.75"/></Trigger>
+                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="#409CFF"/></Trigger>
+                    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Frame" Property="Opacity" Value="0.45"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
         <Style x:Key="QuietButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#8CFFFFFF"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="6,4"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontSize" Value="11.5"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">

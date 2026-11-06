@@ -32,6 +32,6 @@ if (!(Test-Path $opusTarget) -or (Get-FileHash $opusSource).Hash -ne (Get-FileHa
 }
 Write-Host "Built: $build (no service or driver installed)"
 if(!$NativeOnly){
-    & (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe') build (Join-Path $root 'src\DS5Link.App\DS5Link.App.csproj') -c $Configuration -p:Platform=AnyCPU
-    if($LASTEXITCODE){throw 'WPF build failed'}
+    & (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe') build (Join-Path $root 'src\DS5Link.Avalonia\DS5Link.Avalonia.csproj') -c $Configuration -p:Platform=AnyCPU
+    if($LASTEXITCODE){throw 'Avalonia build failed'}
 }

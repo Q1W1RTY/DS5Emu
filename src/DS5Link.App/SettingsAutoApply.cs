@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 namespace DS5Link;
 // A keyed, serialized queue: changes made during an outstanding request
@@ -36,23 +37,24 @@ internal sealed partial class InputSettingsWindow {
  void QueueAutoApply(bool effects){
   if(!autoReady || preview || closed)return;
   autoApplier.Queue(effects?"effects":"input",effects?ApplyEffectDraftAsync:ApplyTouchDraftAsync);
+  SaveStatusText.Text=L.T("Сохранение…");SaveStatusDot.Fill=new SolidColorBrush(Color.FromRgb(64,156,255));
   InputSettingsNotice.Text="";InputSettingsNotice.Visibility=Visibility.Collapsed;autoApplyTimer.Stop();autoApplyTimer.Start();
  }
  async Task<bool> ApplyPendingSettings(){
   if(closed)return false;
-  try{await autoApplier.FlushAsync();InputSettingsNotice.Text="";InputSettingsNotice.Visibility=Visibility.Collapsed;return true;}
-  catch(Exception error){InputSettingsNotice.Text="Не удалось применить: "+error.Message;InputSettingsNotice.Visibility=Visibility.Visible;return false;}
+  try{await autoApplier.FlushAsync();SaveStatusText.Text=L.T(preview?"Предпросмотр":"Изменения сохранены");SaveStatusDot.Fill=new SolidColorBrush(Color.FromRgb(48,209,88));InputSettingsNotice.Text="";InputSettingsNotice.Visibility=Visibility.Collapsed;return true;}
+  catch(Exception error){SaveStatusText.Text=L.T("Не удалось сохранить");SaveStatusDot.Fill=new SolidColorBrush(Color.FromRgb(255,159,10));InputSettingsNotice.Text=L.T("Не удалось применить: ")+error.Message;InputSettingsNotice.Visibility=Visibility.Visible;return false;}
  }
  async void OnSettingsClosing(object? sender,CancelEventArgs e){
   if(!allowClose && (autoApplier.HasPending || autoApplier.IsRunning)){
    e.Cancel=true;if(closingFlush)return;closingFlush=true;autoApplyTimer.Stop();
-   bool ok=await ApplyPendingSettings();closingFlush=false;if(ok || MessageBox.Show(this,"Не удалось сохранить изменения. Закрыть окно и отказаться от неприменённых изменений?","Настройки",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes){allowClose=true;Close();}return;
+   bool ok=await ApplyPendingSettings();closingFlush=false;if(ok || MessageBox.Show(this,L.T("Не удалось сохранить изменения. Закрыть окно и отказаться от неприменённых изменений?"),L.T("Настройки"),MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes){allowClose=true;Close();}return;
   }
   closed=true;autoApplyTimer.Stop();previewTimer.Stop();CancelCapture();
  }
  async Task ApplyTouchDraftAsync(){
   var next=new InputProfile {Options=new(){LeftDeadzone=(int)LeftDeadzone.Value,RightDeadzone=(int)RightDeadzone.Value,TouchEnabled=TouchBindingsEnabled.IsChecked==true,ConsumeTouchpad=ConsumeTouchpad.IsChecked==true},Bindings=new(bindings)};
-  if(!next.Valid)throw new InvalidOperationException("Назначьте хотя бы одну клавишу для тачпада.");
+  if(!next.Valid)throw new InvalidOperationException(L.T("Назначьте хотя бы одну клавишу для тачпада."));
   if(saveProfile!=null)await SaveProfileInput(next);else await apply(next);
  }
 }

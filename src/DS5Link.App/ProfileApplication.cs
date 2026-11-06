@@ -11,7 +11,7 @@ internal static class ProfileApplication {
    // Attempt both restores even if one channel is unavailable.
    try{await input(previous.Input);}catch(Exception error){inputFailure=error;}
    try{await effects(previous.Effects);}catch(Exception error){effectFailure=error;}
-   if(inputFailure!=null || effectFailure!=null)throw new AggregateException("Не удалось полностью восстановить предыдущий профиль.",original,inputFailure??effectFailure!);
+   if(inputFailure!=null || effectFailure!=null)throw new AggregateException(L.T("Не удалось полностью восстановить предыдущий профиль."),original,inputFailure??effectFailure!);
    throw;
   }
  }

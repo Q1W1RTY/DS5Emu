@@ -1,11 +1,11 @@
-﻿param([Parameter(Mandatory)][string]$ReleaseDirectory)
+param([Parameter(Mandatory)][string]$ReleaseDirectory)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $ReleaseDirectory=[IO.Path]::GetFullPath($ReleaseDirectory)
 $exe=Join-Path $ReleaseDirectory 'DS5Link-Setup.exe'
 $qa=Join-Path $ReleaseDirectory 'qa';New-Item -ItemType Directory $qa -Force|Out-Null
 function Verify-Exe([string]$Path,[string]$Report,[int]$ExpectedCode){
- $child=Start-Process $Path -ArgumentList @('--verify-only',('"'+$Report+'"')) -PassThru -Wait
+ $child=Start-Process $Path -ArgumentList @('--verify-only',('"'+$Report+'"')) -WindowStyle Hidden -PassThru -Wait
  if($child.ExitCode -ne $ExpectedCode){throw "Unexpected exit code: $($child.ExitCode)"}
  $result=Get-Content $Report -Raw|ConvertFrom-Json
  if($result.ok -ne ($ExpectedCode -eq 0)){throw 'Verification status does not match exit code'}
@@ -36,6 +36,7 @@ $fixtureExe=Join-Path $qa 'Corrupt-Setup.exe'
 & "$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /platform:x64 "/out:$fixtureExe" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll "/resource:$zip,DS5Link.Payload" (Join-Path $root 'installer\Setup.cs') (Join-Path $root 'installer\SetupStyle.cs')
 if($LASTEXITCODE){throw 'Fixture compilation failed'}
 Verify-Exe $fixtureExe (Join-Path $qa 'corrupt.json') 1
+Remove-Item -LiteralPath $fixtureExe,$zip -Force
 foreach($script in @('Install.ps1','Uninstall.ps1','InstallPaths.ps1','OwnedFiles.ps1','Dependencies.ps1')){
  $tokens=$null;$errors=$null
  [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $payload $script),[ref]$tokens,[ref]$errors)|Out-Null
@@ -43,3 +44,7 @@ foreach($script in @('Install.ps1','Uninstall.ps1','InstallPaths.ps1','OwnedFile
 }
 @{ok=$true;checks=@('embedded payload extraction and all hashes','corrupt payload rejected with exit 1','no controller database/log/settings in payload','native manifest hash; candidate acceptance flag checked','installer PowerShell syntax','three independent dependency reports under Windows PowerShell 5.1');installed=$false}|ConvertTo-Json -Depth 4|Set-Content (Join-Path $qa 'result.json') -Encoding utf8
 Write-Host 'Setup QA passed. Drivers/service were not changed.'
+# Keep the current verified build and one rollback build after successful local QA.
+if([IO.Path]::GetDirectoryName($ReleaseDirectory) -eq (Join-Path $root 'artifacts\releases')){
+ & (Join-Path $PSScriptRoot 'prune-releases.ps1') -Apply
+}

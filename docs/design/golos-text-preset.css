@@ -1,0 +1,20 @@
+/* Конфигурация шрифта для DS5Link */
+@import url('https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-ui: 'Golos Text', sans-serif;
+  --font-heading: 'Golos Text', sans-serif;
+}
+
+body {
+  font-family: var(--font-ui);
+  letter-spacing: 0em;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, .ds5-heading {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}

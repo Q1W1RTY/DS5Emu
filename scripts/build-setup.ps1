@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param([string]$PackageDirectory,[string]$OutputDirectory,[string]$CandidateNativeDirectory)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
@@ -26,7 +26,7 @@ foreach($culture in @('cs','de','es','fr','it','ja','ko','pl','pt-BR','tr','zh-H
  if(Test-Path -LiteralPath $culturePath){foreach($file in @(Get-ChildItem -LiteralPath $culturePath -File)){if($file.Name.EndsWith('.resources.dll')){Remove-Item -LiteralPath $file.FullName}};if(!@(Get-ChildItem -LiteralPath $culturePath -Force).Count){[IO.Directory]::Delete($culturePath,$false)}}
 }
 # Publish only the UI; the hardware-tested native files above are retained.
-& (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe') publish (Join-Path $root 'src\DS5Link.App\DS5Link.App.csproj') -c Release -r win-x64 --self-contained true -p:Platform=AnyCPU -p:SatelliteResourceLanguages=ru -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $payload 'app')
+& (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe') publish (Join-Path $root 'src\DS5Link.Avalonia\DS5Link.Avalonia.csproj') -c Release -r win-x64 --self-contained true -p:Platform=AnyCPU -p:SatelliteResourceLanguages=ru -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $payload 'app')
 if($LASTEXITCODE){throw 'UI publish failed'}
 foreach($legacyFile in @('DS5Link.pdb','DSEmu.exe','DSEmu.dll','DSEmu.deps.json','DSEmu.runtimeconfig.json','DSEmu.pdb','DS5Emu.exe','DS5Emu.dll','DS5Emu.deps.json','DS5Emu.runtimeconfig.json','DS5Emu.pdb')){
  $legacyPath=Join-Path $payload ('app\'+$legacyFile)
@@ -67,8 +67,9 @@ $manifest=Join-Path $OutputDirectory 'Setup.manifest'
 & $compiler /nologo /target:winexe /platform:x64 /optimize+ "/out:$exe" "/win32icon:$root\src\DS5Link.App\Assets\DS5Link.ico" "/win32manifest:$manifest" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll "/resource:$zip,DS5Link.Payload" (Join-Path $root 'installer\Setup.cs') (Join-Path $root 'installer\SetupStyle.cs') $versionSource
 if($LASTEXITCODE){throw 'Bootstrap compilation failed'}
 $verification=Join-Path $OutputDirectory 'verification.json'
-$process=Start-Process $exe -ArgumentList @('--verify-only',('"'+$verification+'"')) -PassThru -Wait
+$process=Start-Process $exe -ArgumentList @('--verify-only',('"'+$verification+'"')) -WindowStyle Hidden -PassThru -Wait
 if($process.ExitCode -ne 0 -or !(Get-Content $verification -Raw|ConvertFrom-Json).ok){throw 'Embedded payload verification failed'}
 '{0}  DS5Link-Setup.exe' -f (Get-FileHash $exe).Hash | Set-Content (Join-Path $OutputDirectory 'SHA256.txt') -Encoding ascii
+Remove-Item -LiteralPath $zip -Force
 Write-Host "Release: $exe"
 Write-Host 'Payload verified without installing or changing the running app.'

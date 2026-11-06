@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms><ImplicitUsings>disable</ImplicitUsings><Nullable>enable</Nullable>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier><RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
+    <AssemblyName>DS5Link</AssemblyName><RootNamespace>DS5Link</RootNamespace><Product>DS5Link</Product>
+    <ApplicationIcon>..\DS5Link.App\Assets\DS5Link.ico</ApplicationIcon><ApplicationManifest>..\DS5Link.App\app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\VERSION').Trim())</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.5"/><PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.5"/>
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1"/>
+    <AvaloniaResource Include="Assets\**\*.ttf"/>
+    <AvaloniaResource Include="..\DS5Link.App\Assets\*.ico" Link="Assets/%(Filename)%(Extension)"/>
+    <AvaloniaResource Include="..\DS5Link.App\Assets\DualSense-card.png" Link="Assets/DualSense-card.png"/>
+    <EmbeddedResource Include="..\DS5Link.App\Strings.en.json" WithCulture="false" LogicalName="DS5Link.Strings.en.json"/>
+    <Content Include="Assets\Fonts\Geologica-OFL.txt" Link="licenses/Geologica-OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
+    <Content Include="..\..\third_party\Avalonia\*.txt" Link="licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
+  </ItemGroup>
+  <Target Name="ExcludeNativeDebugSymbols" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(Extension)' == '.pdb'" />
+      <RuntimeCopyLocalItems Remove="@(RuntimeCopyLocalItems)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+</Project>

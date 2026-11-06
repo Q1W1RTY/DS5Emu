@@ -1,0 +1,1 @@
+Google Fonts Geologica, source commit 86aced91de05cd4f96a06838124cca45be337b2b. Static instances generated from the variable source at default CRSV/SHRP/slnt axes; wght=400/500/600/700. OFL license included.
